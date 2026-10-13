@@ -1,7 +1,10 @@
 package com.lightxin.feature.running.data
 
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.lightxin.feature.running.domain.ClubSummary
+import com.lightxin.feature.running.domain.RunRecordVerdict
 
 data class JuniorExtraDetail(
     val memberId: String = "",
@@ -53,6 +56,29 @@ object SportsGradeMapper {
             minSpeedKmh = detail.string("minSpeed").toPositiveDoubleOrNull(),
             maxSpeedKmh = detail.string("maxSpeed").toPositiveDoubleOrNull(),
         )
+    }
+
+    /** 解析 extra/getExtraCheck.do → 服务端对单条跑步记录的判定。无 extraInfo 时返回 null。 */
+    fun parseCheckRecord(json: JsonObject?): RunRecordVerdict? {
+        // 该接口的 extraInfo 在 data 下还是在响应顶层，两种形态都见过；不赌，都试。
+        val extra = json?.dataObject()?.getAsJsonObjectOrNull("extraInfo")
+            ?: json?.getAsJsonObjectOrNull("extraInfo")
+            ?: return null
+        return RunRecordVerdict(
+            checkId = extra.string("checkId"),
+            state = extra.string("state"),
+            remark = extra.string("remark"),
+            storedPointCount = routePointCount(extra.get("runningRoute")),
+        )
+    }
+
+    /** runningRoute 既可能以 JSON 字符串下发，也可能已经是数组。 */
+    private fun routePointCount(element: JsonElement?): Int {
+        element ?: return 0
+        if (element.isJsonArray) return element.asJsonArray.size()
+        val raw = runCatching { element.asString }.getOrNull().orEmpty()
+        if (raw.isBlank()) return 0
+        return runCatching { JsonParser.parseString(raw).asJsonArray.size() }.getOrDefault(0)
     }
 
     /** 解析 index/clubInfo.do → ClubSummary；大三/大四 clubInfo 为 null 时返回 null。 */

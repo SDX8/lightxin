@@ -264,11 +264,9 @@ class RunningViewModel @Inject constructor(
                         shouldNavigateToResult = true,
                     )
                 }
-                // 先带结果跳转，再等首页刷新回来补"实际计入里程"，避免用户多等一个网络往返
-                val creditedKm = refreshAndComputeCreditedKm(beforeTodayKm)
-                _uiState.update {
-                    it.copy(lastResult = it.lastResult?.copy(creditedKm = creditedKm))
-                }
+                // 先带结果跳转，再异步补"实际计入里程"与"服务端判定"，避免用户多等一个网络往返
+                val finalResult = buildFinalResult(effective, beforeTodayKm)
+                _uiState.update { it.copy(lastResult = finalResult) }
             },
             onFailure = { error ->
                 val failureResult = buildFailedResult(
@@ -335,6 +333,19 @@ class RunningViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 上传成功后回读服务端：本次真计入了多少里程、判有效还是无效、轨迹存下几个点。
+     * `result=OK` 只代表记录建了，这三件事它都不保证。
+     */
+    private suspend fun buildFinalResult(base: RunningResult, beforeTodayKm: Double?): RunningResult {
+        val creditedKm = refreshAndComputeCreditedKm(beforeTodayKm)
+        val verdict = base.uploadId.takeIf { it.isNotBlank() }
+            ?.let { repository.getRunRecord(it).getOrNull() }
+        val suffix = verdict?.let { "（服务端判定：${it.describe()}；已存轨迹 ${it.storedPointCount} 个点）" }
+            .orEmpty()
+        return base.copy(creditedKm = creditedKm, message = base.message + suffix)
+    }
+
     private suspend fun uploadSnapshot(snapshot: RunningSnapshot) {
         val beforeTodayKm = _uiState.value.dashboard?.todayKm
         _uiState.update { it.copy(isUploadingRun = true, startError = null) }
@@ -349,11 +360,9 @@ class RunningViewModel @Inject constructor(
                         shouldNavigateToResult = true,
                     )
                 }
-                // 先带结果跳转，再等首页刷新回来补"实际计入里程"
-                val creditedKm = refreshAndComputeCreditedKm(beforeTodayKm)
-                _uiState.update {
-                    it.copy(lastResult = it.lastResult?.copy(creditedKm = creditedKm))
-                }
+                // 先带结果跳转，再异步补"实际计入里程"与"服务端判定"
+                val finalResult = buildFinalResult(result, beforeTodayKm)
+                _uiState.update { it.copy(lastResult = finalResult) }
             },
             onFailure = { error ->
                 // 不 clear session：轨迹与 exerciseId 要留着，回跑步页还能重试上传

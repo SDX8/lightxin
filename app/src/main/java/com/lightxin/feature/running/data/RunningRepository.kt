@@ -13,6 +13,7 @@ import com.lightxin.feature.running.domain.RunningDashboard
 import com.lightxin.feature.running.domain.RunningResult
 import com.lightxin.feature.running.domain.RunningSnapshot
 import com.lightxin.feature.running.domain.RunningStartInfo
+import com.lightxin.feature.running.domain.RunRecordVerdict
 import com.lightxin.feature.running.domain.SimConfig
 import com.lightxin.feature.running.domain.TrackPoint
 import com.lightxin.feature.running.domain.TrajectoryGenerator
@@ -146,6 +147,23 @@ class RunningRepository @Inject constructor(
             throw e
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "获取俱乐部详情失败", e))
+        }
+    }
+
+    /**
+     * 回读服务端对这条记录的判定。上传返回 `result=OK` 只代表记录建了，
+     * 是否真的有效、以及轨迹有没有存下来，只有这个接口知道。
+     */
+    suspend fun getRunRecord(checkId: String): Result<RunRecordVerdict> {
+        return try {
+            val json = api.getExtraCheck(sportsAuthParams() + ("checkId" to checkId))
+            val verdict = SportsGradeMapper.parseCheckRecord(json)
+                ?: return Result.failure(Exception("未查询到该跑步记录"))
+            Result.success(verdict)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(Exception(e.message ?: "回读跑步记录失败", e))
         }
     }
 

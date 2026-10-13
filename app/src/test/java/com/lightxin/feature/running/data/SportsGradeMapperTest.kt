@@ -97,6 +97,66 @@ class SportsGradeMapperTest {
     }
 
     @Test
+    fun `parseCheckRecord reads verdict and counts a string-encoded route`() {
+        val verdict = requireNotNull(
+            SportsGradeMapper.parseCheckRecord(
+                json(
+                    """{"data":{"extraInfo":{"checkId":"6902bd","state":"0","remark":"运动轨迹异常，无效",""" +
+                        """"runningRoute":"[{\"latitude\":\"31.13\",\"longitude\":\"118.62\"},""" +
+                        """{\"latitude\":\"31.14\",\"longitude\":\"118.63\"}]"}}}""",
+                ),
+            ),
+        )
+
+        assertEquals("6902bd", verdict.checkId)
+        assertEquals(2, verdict.storedPointCount)
+        assertFalse(verdict.isValid)
+        assertEquals("无效：运动轨迹异常，无效", verdict.describe())
+    }
+
+    @Test
+    fun `parseCheckRecord accepts a route already delivered as an array`() {
+        val verdict = requireNotNull(
+            SportsGradeMapper.parseCheckRecord(
+                json("""{"data":{"extraInfo":{"state":"1","runningRoute":[{"latitude":31.1,"longitude":118.6}]}}}"""),
+            ),
+        )
+
+        assertEquals(1, verdict.storedPointCount)
+        assertTrue(verdict.isValid)
+        assertEquals("有效", verdict.describe())
+    }
+
+    @Test
+    fun `parseCheckRecord reports zero points when the server stored no route`() {
+        val verdict = requireNotNull(
+            SportsGradeMapper.parseCheckRecord(
+                json("""{"data":{"extraInfo":{"state":"0","runningRoute":""}}}"""),
+            ),
+        )
+
+        assertEquals(0, verdict.storedPointCount)
+    }
+
+    @Test
+    fun `parseCheckRecord returns null without extraInfo`() {
+        assertNull(SportsGradeMapper.parseCheckRecord(json("""{"data":{}}""")))
+        assertNull(SportsGradeMapper.parseCheckRecord(null))
+    }
+
+    @Test
+    fun `parseCheckRecord also reads extraInfo at the response top level`() {
+        val verdict = requireNotNull(
+            SportsGradeMapper.parseCheckRecord(
+                json("""{"extraInfo":{"state":"1","runningRoute":[{"latitude":31.1,"longitude":118.6}]}}"""),
+            ),
+        )
+
+        assertTrue(verdict.isValid)
+        assertEquals(1, verdict.storedPointCount)
+    }
+
+    @Test
     fun `parseClubSummary maps junior club fields`() {
         val summary = SportsGradeMapper.parseClubSummary(
             json(

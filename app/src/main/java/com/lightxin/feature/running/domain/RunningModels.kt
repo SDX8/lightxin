@@ -61,6 +61,25 @@ data class RunningSnapshot(
     val pointsAreBd09: Boolean = false,
 )
 
+/**
+ * 服务端对一条跑步记录的判定回读。`state == "1"` 为有效，`"0"` / `"2"` 为无效，
+ * 原因在 `remark`；`storedPointCount` 为 0 说明服务端没存下我们上传的轨迹。
+ */
+data class RunRecordVerdict(
+    val checkId: String,
+    val state: String,
+    val remark: String,
+    val storedPointCount: Int,
+) {
+    val isValid: Boolean get() = state == "1"
+
+    fun describe(): String = when {
+        isValid -> "有效"
+        remark.isNotBlank() -> "无效：$remark"
+        else -> "无效（state=$state）"
+    }
+}
+
 data class SimConfig(
     val distanceKm: Double,
     val durationMinutes: Int,
