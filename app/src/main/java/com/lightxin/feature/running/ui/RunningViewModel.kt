@@ -233,6 +233,7 @@ class RunningViewModel @Inject constructor(
             ?.let { TrajectoryGenerator.generateFromTemplate(config, it) }
             ?.takeIf { it.points.size >= 2 }
         val usedTemplateId = templateTrajectory?.let { template?.id }
+        val templateIgnored = template != null && templateTrajectory == null
         val trajectorySize = templateTrajectory?.points?.size
             ?: TrajectoryGenerator.generate(config).points.size
 
@@ -250,10 +251,16 @@ class RunningViewModel @Inject constructor(
         repository.submitSimulation(config, templateTrajectory).fold(
             onSuccess = { result ->
                 usedTemplateId?.let { templateStore.markUsed(it) }
+                // 模板采样为空时仓库会退回内置路线；不说明的话，用户以为传的是自己录的线
+                val effective = if (templateIgnored) {
+                    result.copy(message = result.message + "（模板未生成有效轨迹，本次改用内置路线）")
+                } else {
+                    result
+                }
                 _uiState.update {
                     it.copy(
                         isSubmittingSimulation = false,
-                        lastResult = result,
+                        lastResult = effective,
                         shouldNavigateToResult = true,
                     )
                 }

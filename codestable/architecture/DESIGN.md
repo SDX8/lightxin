@@ -45,7 +45,7 @@
 - `designsystem/` — `Theme / Color / Type / Shape` + 11 个通用组件文件（`LxCard` / `LxButton` 等）；详见 [`designsystem-overview.md`](designsystem-overview.md)
 - `settings/` — `DeveloperPrefs`（`lightxin_dev` DataStore 的 `advanced_enabled` 调试开关），由 About 页写入，Profile / Running 等页面读取
 
-### 3.2 feature/（10 个功能包，按 `data / domain / ui` 三层）
+### 3.2 feature/（14 个功能包，按 `data / domain / ui` 三层）
 
 | 功能包 | 说明 |
 |---|---|
@@ -60,6 +60,9 @@
 | `onboarding` | 首启欢迎页（含插画动效） |
 | `about` | 关于页 + 调试开关入口 |
 | `more` | 更多功能聚合页，包含劳动教育 / 考试成绩 / 素质学分入口与实况通知权限引导 |
+| `exam` | 考试成绩：按学年学期查询成绩，客户端计算加权平均绩点（复用 `CshRetrofit`）；详见 [`exam-overview.md`](exam-overview.md) |
+| `credit` | 素质学分：五模块进度可视化 + 记录列表 + 详情 BottomSheet（独立 `CreditRetrofit`，复用主 `OkHttpClient`）；详见 [`credit-overview.md`](credit-overview.md) |
+| `update` | 应用内更新：GitHub Release 检查 + 版本比较 + APK 下载，自带独立的 `GitHubReleaseApi` 网络栈 |
 
 ### 3.3 navigation/
 
@@ -89,7 +92,7 @@
 
 - **全 Compose 原生重写**，不保留任何 WebView 壳（与原 APP 的 H5 + 原生壳模式做根本区别）→ [`decision-compose-native-rewrite`](compound/2026-04-22-decision-compose-native-rewrite.md)
 - **Clean Architecture 三层（`data / domain / ui`）按 feature 分包**，不按层分包 → [`decision-feature-tri-layer-package`](compound/2026-04-22-decision-feature-tri-layer-package.md)
-- **多域名网络层** — Hilt `@Qualifier` 区分 7 个 Retrofit 实例，共享同一个 `OkHttpClient`；**FIF 除外**：独立 `OkHttpClient` + `CookieJar`（SSO + SESSION 管理必须独立）；认证方式差异由 `AuthInterceptor` 按 URL 路由 → [`decision-fif-independent-okhttp-stack`](compound/2026-04-22-decision-fif-independent-okhttp-stack.md)
+- **多域名网络层** — Hilt `@Qualifier` 区分 9 个 Retrofit 实例，共享同一个 `OkHttpClient`；**FIF 除外**：独立 `OkHttpClient` + `CookieJar`（SSO + SESSION 管理必须独立）；认证方式差异由 `AuthInterceptor` 按 URL 路由 → [`decision-fif-independent-okhttp-stack`](compound/2026-04-22-decision-fif-independent-okhttp-stack.md)
 - **不引入任何地图 SDK** — 定位走原生 `LocationManager`；跑步仪表盘不展示地图轨迹；坐标转换手写 → [`decision-no-map-sdk`](compound/2026-04-22-decision-no-map-sdk.md)
 - **路线模板用 JSON 文件存储而非 Room** — 保持轻量、避免 DB schema 迁移成本 → [`decision-route-template-json-not-room`](compound/2026-04-22-decision-route-template-json-not-room.md)
 - **课表离线走应用层 JSON 快照** — 课表接口全是 POST 表单，OkHttp HTTP 缓存不命中；`ScheduleCacheStore` 成功后 write-through、失败时回退并透出快照时间，首页与课程倒计时通知复用同一入口自动获得离线能力 → [`decision-schedule-offline-snapshot`](compound/2026-10-12-decision-schedule-offline-snapshot.md)

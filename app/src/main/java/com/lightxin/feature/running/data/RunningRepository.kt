@@ -18,7 +18,9 @@ import com.lightxin.feature.running.domain.TrackPoint
 import com.lightxin.feature.running.domain.TrajectoryGenerator
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
 import java.time.Instant
 import java.time.LocalDateTime
@@ -171,7 +173,7 @@ class RunningRepository @Inject constructor(
     private fun String.toPlainBody(): okhttp3.RequestBody =
         okhttp3.RequestBody.create("text/plain".toMediaTypeOrNull(), this)
 
-    suspend fun startRunning(extraId: String? = null): Result<RunningStartInfo> {
+    suspend fun startRunning(): Result<RunningStartInfo> {
         return try {
             val params = sportsAuthParams()
             val grade = api.checkDsStudent(params).lookupString("result", "msg")
@@ -179,12 +181,7 @@ class RunningRepository @Inject constructor(
             if (SportsGradeMapper.isJuniorGrade(grade)) {
                 return startJuniorRunning(params + ("grade" to grade))
             }
-            val startParams = params.toMutableMap().apply {
-                if (!extraId.isNullOrBlank()) {
-                    put("extraId", extraId)
-                }
-            }
-            val response = api.startRunning(startParams)
+            val response = api.startRunning(params)
             response.requireSportsSuccess("开始跑步失败")
             val exerciseId = response.lookupString("extraId")
             if (exerciseId.isBlank()) {
@@ -264,33 +261,34 @@ class RunningRepository @Inject constructor(
             val distanceKm = snapshot.distanceMeters / 1000.0
             val durationSeconds = snapshot.durationSeconds.coerceAtLeast(1L)
             val speedKmh = distanceKm / durationSeconds * 3600.0
-            val route = if (snapshot.pointsAreBd09) {
-                snapshot.points
-            } else {
-                snapshot.points.map { point ->
-                    val bdPoint = CoordinateConverter.wgs84ToBd09(point.latitude, point.longitude)
-                    TrackPoint(
-                        latitude = bdPoint.latitude,
-                        longitude = bdPoint.longitude,
-                        timestampMillis = point.timestampMillis,
-                    )
+            // 逐点坐标转换 + 分段 RSA 加密都是 CPU 活，长轨迹下会卡主线程
+            val (route, encryptedList) = withContext(Dispatchers.Default) {
+                val converted = if (snapshot.pointsAreBd09) {
+                    snapshot.points
+                } else {
+                    snapshot.points.map { point ->
+                        val bdPoint = CoordinateConverter.wgs84ToBd09(point.latitude, point.longitude)
+                        TrackPoint(
+                            latitude = bdPoint.latitude,
+                            longitude = bdPoint.longitude,
+                            timestampMillis = point.timestampMillis,
+                        )
+                    }
                 }
+                val payload = RunningUploadPayload(
+                    exerciseId = snapshot.startInfo.exerciseId,
+                    memberId = snapshot.startInfo.memberId,
+                    runningType = snapshot.startInfo.runningType,
+                    startDate = formatDateTime(snapshot.startTimeMillis),
+                    endDate = serverTime,
+                    mileKm = distanceKm,
+                    timeSeconds = durationSeconds,
+                    speedKmh = speedKmh,
+                    runningRoute = converted,
+                    sourceInfo = Build.MODEL ?: "Android",
+                )
+                converted to encryption.encryptUploadPayload(payload)
             }
-
-            val payload = RunningUploadPayload(
-                exerciseId = snapshot.startInfo.exerciseId,
-                memberId = snapshot.startInfo.memberId,
-                runningType = snapshot.startInfo.runningType,
-                startDate = formatDateTime(snapshot.startTimeMillis),
-                endDate = serverTime,
-                mileKm = distanceKm,
-                timeSeconds = durationSeconds,
-                speedKmh = speedKmh,
-                runningRoute = route,
-                sourceInfo = Build.MODEL ?: "Android",
-            )
-
-            val encryptedList = encryption.encryptUploadPayload(payload)
             val response = api.uploadRunningRecord(encryptedList)
             val resultCode = response.lookupString("result")
             val uploadId = response.lookupString("id")
@@ -311,8 +309,8 @@ class RunningRepository @Inject constructor(
                     success = true,
                     message = message,
                     uploadId = uploadId,
-                    startDate = payload.startDate,
-                    endDate = payload.endDate,
+                    startDate = formatDateTime(snapshot.startTimeMillis),
+                    endDate = serverTime,
                     distanceKm = distanceKm,
                     durationSeconds = durationSeconds,
                     speedKmh = speedKmh,
