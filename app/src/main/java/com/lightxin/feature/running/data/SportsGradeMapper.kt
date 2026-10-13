@@ -11,6 +11,10 @@ data class JuniorExtraDetail(
     val surplusMileKm: Double = 0.0,
     val maxMileKm: Double = 0.0,
     val maxMileDate: String = "",
+    /** 服务端下发的有效速度下限（km/h）；缺失为 null，调用方自定兜底。 */
+    val minSpeedKmh: Double? = null,
+    /** 服务端下发的有效速度上限（km/h）；超出即被判无效。 */
+    val maxSpeedKmh: Double? = null,
 )
 
 /**
@@ -46,6 +50,8 @@ object SportsGradeMapper {
             surplusMileKm = detail.string("surplusMile").toDoubleOrNull() ?: 0.0,
             maxMileKm = detail.string("maxMile").toDoubleOrNull() ?: 0.0,
             maxMileDate = detail.string("maxMileDate"),
+            minSpeedKmh = detail.string("minSpeed").toPositiveDoubleOrNull(),
+            maxSpeedKmh = detail.string("maxSpeed").toPositiveDoubleOrNull(),
         )
     }
 

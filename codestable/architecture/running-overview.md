@@ -255,6 +255,9 @@ navigation 层把 running 明确拆成两套共享作用域：
 - **年级只读服务端 result** —— 不按学号、性别或本地规则推断年级；大一大二目标值只取服务端字段，`extraDetailInfo` 只能作为接口失败时的目标兜底来源。
 - **大一大二开始跑步不走 startRunning.do** —— 会话标识来自 `extraInfo.do` 的 `extraId` 与 `extraDetailInfo.do` 的 `memberId/mixOnceMile`（`feature/running/data/RunningRepository.kt:212-228`）。
 - **上传成功要校验有效 ID** —— `result=OK` 但 `id` 为空或 `"0"` 视为失败，提示服务端未生成有效跑步记录（`feature/running/data/RunningRepository.kt:293-311`）。
+- **`result=OK` + 有效 id 不等于里程入账** —— 服务端可能建了记录却按规则判无效（实测：当日里程已达 `maxDayMile` 时贡献为 0）。结果页因此显示 `RunningResult.creditedKm`（上传前后 `dashboard.todayKm` 之差，`feature/running/ui/RunningViewModel.kt:130-135`），为 0 时明确提示"未计入"，不再只报"上传成功"。
+- **有效速度区间以服务端下发为准** —— `extraDetailInfo.do` 的 `minSpeed` / `maxSpeed` 经 `SportsGradeMapper` 解析进 `RunningDashboard.minSpeedKmh/maxSpeedKmh`，模拟提交校验与 `RunningSimScreen` 配色都读这一对值（`feature/running/ui/RunningViewModel.kt:303-321`）。2026-10-13 实测该账号下发的是 `2`–`15` km/h；服务端未下发时兜底 2–15。此前硬编码的 6–15 是客户端自己猜的，比服务端严。
+- **日限额 `maxDayMile` 当前不解析也不提示** —— 客户端不预判"今天再跑也不计里程"，提示依赖学校官方 App。要加预警时从同一份 `extraDetail` 取。
 - **拒绝通知权限不再阻断跑步** —— 入口只强制要求定位权限；`POST_NOTIFICATIONS` 被拒仅影响前台服务通知可见性（`feature/running/ui/RunningHomeScreen.kt:73-88`）。
 
 ## 7. 相关文档

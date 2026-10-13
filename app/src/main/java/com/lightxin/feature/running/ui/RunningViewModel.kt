@@ -95,28 +95,42 @@ class RunningViewModel @Inject constructor(
     }
 
     fun refreshDashboard() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isDashboardLoading = true, dashboardError = null) }
-            repository.getDashboard().fold(
-                onSuccess = { dashboard ->
-                    _uiState.update {
-                        it.copy(
-                            dashboard = dashboard,
-                            isDashboardLoading = false,
-                            dashboardError = null,
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isDashboardLoading = false,
-                            dashboardError = error.message ?: "加载跑步首页失败",
-                        )
-                    }
-                },
-            )
-        }
+        viewModelScope.launch { applyDashboard() }
+    }
+
+    private suspend fun applyDashboard(): RunningDashboard? {
+        _uiState.update { it.copy(isDashboardLoading = true, dashboardError = null) }
+        return repository.getDashboard().fold(
+            onSuccess = { dashboard ->
+                _uiState.update {
+                    it.copy(
+                        dashboard = dashboard,
+                        isDashboardLoading = false,
+                        dashboardError = null,
+                    )
+                }
+                dashboard
+            },
+            onFailure = { error ->
+                _uiState.update {
+                    it.copy(
+                        isDashboardLoading = false,
+                        dashboardError = error.message ?: "加载跑步首页失败",
+                    )
+                }
+                null
+            },
+        )
+    }
+
+    /**
+     * 刷新首页并算出本次上传真正计入的里程增量。
+     * 为 0 表示服务端建了记录但没计里程（例如已达每日上限）；无法判定时为 null。
+     */
+    private suspend fun refreshAndComputeCreditedKm(beforeTodayKm: Double?): Double? {
+        val afterTodayKm = applyDashboard()?.todayKm
+        if (beforeTodayKm == null || afterTodayKm == null) return null
+        return (afterTodayKm - beforeTodayKm).coerceAtLeast(0.0)
     }
 
     suspend fun startRealRun(): Result<RunningStartInfo> {
@@ -231,6 +245,8 @@ class RunningViewModel @Inject constructor(
             )
         }
 
+        val beforeTodayKm = _uiState.value.dashboard?.todayKm
+
         repository.submitSimulation(config, templateTrajectory).fold(
             onSuccess = { result ->
                 usedTemplateId?.let { templateStore.markUsed(it) }
@@ -241,7 +257,11 @@ class RunningViewModel @Inject constructor(
                         shouldNavigateToResult = true,
                     )
                 }
-                refreshDashboard()
+                // 先带结果跳转，再等首页刷新回来补"实际计入里程"，避免用户多等一个网络往返
+                val creditedKm = refreshAndComputeCreditedKm(beforeTodayKm)
+                _uiState.update {
+                    it.copy(lastResult = it.lastResult?.copy(creditedKm = creditedKm))
+                }
             },
             onFailure = { error ->
                 val failureResult = buildFailedResult(
@@ -279,6 +299,27 @@ class RunningViewModel @Inject constructor(
         return distance / durationMinutes * 60.0
     }
 
+    /** 有效速度区间以服务端下发为准（extraDetailInfo 的 minSpeed/maxSpeed），未下发时用兜底值。 */
+    fun simulationSpeedWindow(): Pair<Double, Double> {
+        val dashboard = _uiState.value.dashboard
+        return (dashboard?.minSpeedKmh ?: FALLBACK_MIN_SPEED_KMH) to
+            (dashboard?.maxSpeedKmh ?: FALLBACK_MAX_SPEED_KMH)
+    }
+
+    fun isSimulationSpeedValid(): Boolean {
+        val speedKmh = simulationSpeedKmh() ?: return false
+        val (minSpeed, maxSpeed) = simulationSpeedWindow()
+        return speedKmh in minSpeed..maxSpeed
+    }
+
+    /** 供 UI 展示的有效区间文案，如 "2-15 km/h"。 */
+    fun simulationSpeedRangeLabel(): String {
+        val (minSpeed, maxSpeed) = simulationSpeedWindow()
+        return "${minSpeed.formatSpeedLimit()}-${maxSpeed.formatSpeedLimit()} km/h"
+    }
+
+    private fun speedRangeErrorMessage(): String = "模拟速度需要在 ${simulationSpeedRangeLabel()} 之间"
+
     private fun observeTracker() {
         viewModelScope.launch {
             tracker.state.collectLatest { trackerState ->
@@ -288,6 +329,7 @@ class RunningViewModel @Inject constructor(
     }
 
     private suspend fun uploadSnapshot(snapshot: RunningSnapshot) {
+        val beforeTodayKm = _uiState.value.dashboard?.todayKm
         _uiState.update { it.copy(isUploadingRun = true, startError = null) }
 
         repository.uploadTrackedRun(snapshot).fold(
@@ -300,7 +342,11 @@ class RunningViewModel @Inject constructor(
                         shouldNavigateToResult = true,
                     )
                 }
-                refreshDashboard()
+                // 先带结果跳转，再等首页刷新回来补"实际计入里程"
+                val creditedKm = refreshAndComputeCreditedKm(beforeTodayKm)
+                _uiState.update {
+                    it.copy(lastResult = it.lastResult?.copy(creditedKm = creditedKm))
+                }
             },
             onFailure = { error ->
                 // 不 clear session：轨迹与 exerciseId 要留着，回跑步页还能重试上传
@@ -341,8 +387,9 @@ class RunningViewModel @Inject constructor(
         }
 
         val speedKmh = distanceKm / durationMinutes * 60.0
-        if (speedKmh !in 6.0..15.0) {
-            _uiState.update { it.copy(simError = "模拟速度需要在 6-15 km/h 之间") }
+        val (minSpeed, maxSpeed) = simulationSpeedWindow()
+        if (speedKmh !in minSpeed..maxSpeed) {
+            _uiState.update { it.copy(simError = speedRangeErrorMessage()) }
             return null
         }
 
@@ -364,7 +411,8 @@ class RunningViewModel @Inject constructor(
             return "开始时间需要早于当前时间"
         }
         val speedKmh = distanceKm / durationMinutes * 60.0
-        return if (speedKmh in 6.0..15.0) null else "模拟速度需要在 6-15 km/h 之间"
+        val (minSpeed, maxSpeed) = simulationSpeedWindow()
+        return if (speedKmh in minSpeed..maxSpeed) null else speedRangeErrorMessage()
     }
 
     private fun buildFailedResult(
@@ -408,6 +456,9 @@ class RunningViewModel @Inject constructor(
         )
     }
 
+    private fun Double.formatSpeedLimit(): String =
+        if (this % 1.0 == 0.0) toInt().toString() else String.format(Locale.US, "%.1f", this)
+
     private fun String.filterAllowedDecimal(): String {
         val filtered = filter { it.isDigit() || it == '.' }
         val dotIndex = filtered.indexOf('.')
@@ -420,6 +471,8 @@ class RunningViewModel @Inject constructor(
 
     companion object {
         private val SIM_DURATION_PRESETS = setOf(20, 30, 45)
+        private const val FALLBACK_MIN_SPEED_KMH = 2.0
+        private const val FALLBACK_MAX_SPEED_KMH = 15.0
         private val FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
     }
 }

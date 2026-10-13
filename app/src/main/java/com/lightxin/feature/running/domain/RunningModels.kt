@@ -11,6 +11,9 @@ data class RunningDashboard(
     val dsFlag: Boolean = false,
     val studentTypeLabel: String = "",
     val clubSummary: ClubSummary? = null,
+    /** 服务端下发的有效速度区间（km/h）；null 表示该字段未下发。 */
+    val minSpeedKmh: Double? = null,
+    val maxSpeedKmh: Double? = null,
 )
 
 /** 大一大二首页俱乐部摘要，来自 index/clubInfo.do；大三大四为 null。 */
@@ -83,4 +86,6 @@ data class RunningResult(
     val durationSeconds: Long,
     val speedKmh: Double,
     val pointCount: Int,
+    /** 服务端今日里程在本次上传前后的增量；null 表示无法判定。为 0 即本次未计入里程。 */
+    val creditedKm: Double? = null,
 )

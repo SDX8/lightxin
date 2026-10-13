@@ -72,6 +72,31 @@ class SportsGradeMapperTest {
     }
 
     @Test
+    fun `parseExtraDetail reads server-side valid speed window`() {
+        // 取自 2026-10-13 真机 extraDetailInfo.do 响应
+        val detail = SportsGradeMapper.parseExtraDetail(
+            json(
+                """{"data":{"extraDetail":{"memberId":"f6b7604dbb5043a083dfb5189e762c90",""" +
+                    """"mixOnceMile":"1","maxDayMile":"3","todayMile":"3.06",""" +
+                    """"minSpeed":"2","maxSpeed":"15"}}}""",
+            ),
+        )
+
+        assertEquals(2.0, detail.minSpeedKmh!!, 0.001)
+        assertEquals(15.0, detail.maxSpeedKmh!!, 0.001)
+    }
+
+    @Test
+    fun `parseExtraDetail leaves speed window null when server omits it`() {
+        val detail = SportsGradeMapper.parseExtraDetail(
+            json("""{"data":{"extraDetail":{"memberId":"m","mixOnceMile":"1"}}}"""),
+        )
+
+        assertNull(detail.minSpeedKmh)
+        assertNull(detail.maxSpeedKmh)
+    }
+
+    @Test
     fun `parseClubSummary maps junior club fields`() {
         val summary = SportsGradeMapper.parseClubSummary(
             json(

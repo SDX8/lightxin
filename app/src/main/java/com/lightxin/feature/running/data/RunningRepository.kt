@@ -119,6 +119,8 @@ class RunningRepository @Inject constructor(
                         dsFlag = dashboardJson.lookupBoolean("dsFlag", "taskFlag"),
                         studentTypeLabel = studentTypeLabel,
                         clubSummary = clubSummary,
+                        minSpeedKmh = extraDetail.minSpeedKmh,
+                        maxSpeedKmh = extraDetail.maxSpeedKmh,
                     )
                 )
             }
