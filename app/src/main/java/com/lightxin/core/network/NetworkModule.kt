@@ -1,9 +1,12 @@
 package com.lightxin.core.network
 
+import android.content.Context
+import android.content.pm.ApplicationInfo
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -34,22 +37,30 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(
+        @ApplicationContext context: Context,
         authInterceptor: AuthInterceptor,
         tokenRefreshInterceptor: TokenRefreshInterceptor,
     ): OkHttpClient {
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-
-        return OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
-            .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+        bodyLoggingOrNull(context)?.let { builder.addInterceptor(it) }
+        return builder.build()
     }
+
+    /**
+     * BODY 级日志会把 accessToken、学号、课表等明文一并写进 logcat，
+     * 因此只在 debuggable 构建里开启；release 下返回 null，完全不装日志拦截器。
+     */
+    private fun bodyLoggingOrNull(context: Context): HttpLoggingInterceptor? =
+        if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY }
+        } else {
+            null
+        }
 
     private fun buildRetrofit(client: OkHttpClient, baseUrl: String): Retrofit {
         return Retrofit.Builder()
@@ -106,16 +117,16 @@ object NetworkModule {
     }
 
     @Provides @Singleton @FifOkHttpClient
-    fun provideFifOkHttpClient(cookieJar: CookieJar): OkHttpClient {
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-        return OkHttpClient.Builder()
+    fun provideFifOkHttpClient(
+        @ApplicationContext context: Context,
+        cookieJar: CookieJar,
+    ): OkHttpClient {
+        val builder = OkHttpClient.Builder()
             .cookieJar(cookieJar)
-            .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
-            .build()
+        bodyLoggingOrNull(context)?.let { builder.addInterceptor(it) }
+        return builder.build()
     }
 
     @Provides @Singleton @FifRetrofit

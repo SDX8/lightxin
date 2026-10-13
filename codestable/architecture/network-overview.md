@@ -38,10 +38,10 @@ depends_on: []
 
 | 客户端 | 拦截器 | CookieJar | 使用者 |
 |---|---|---|---|
-| 默认（`provideOkHttpClient`） | `AuthInterceptor` → `TokenRefreshInterceptor` → `HttpLoggingInterceptor` | 无 | 校内默认栈 4 个域名，共 6 个 Retrofit |
-| `@FifOkHttpClient`（`provideFifOkHttpClient`） | 只有 Logging | 内存 CookieJar（`ConcurrentHashMap<host, List<Cookie>>`） | AI 课堂 |
+| 默认（`provideOkHttpClient`） | `AuthInterceptor` → `TokenRefreshInterceptor` → `HttpLoggingInterceptor`（仅 debuggable 构建） | 无 | 校内默认栈 4 个域名，共 6 个 Retrofit |
+| `@FifOkHttpClient`（`provideFifOkHttpClient`） | 只有 Logging（同样仅 debuggable） | 内存 CookieJar（`ConcurrentHashMap<host, List<Cookie>>`） | AI 课堂 |
 
-锚点：`core/network/NetworkModule.kt:32-50`（默认 client）/ `core/network/NetworkModule.kt:99-110`（FIF client）。
+锚点：`core/network/NetworkModule.kt:39-52`（默认 client）/ `core/network/NetworkModule.kt:120-131`（FIF client）/ `core/network/NetworkModule.kt:58-63`（`bodyLoggingOrNull`）。
 
 两条栈不共享的原因：
 - FIF 身份是 `authorization: Basic <token>` + `SESSION` Cookie，和校内默认栈的 `access_token` 字段体系不互通；若共用 `AuthInterceptor`，会把校内参数错误注入到 FIF 请求里（§2.4 第 4 档默认行为）
@@ -217,6 +217,7 @@ FIF 多一层 Cookie 检查的原因是 token 本身不含过期时间，但 `SE
 - **劳教链路是"调用方显式传三字段 + Interceptor 再补字段"的双轨** —— `LaborRepository` 先显式传 `userCode / xh / accessToken`（`feature/labor/data/LaborRepository.kt:23-35` / `feature/labor/data/LaborApi.kt:9-35`），`AuthInterceptor` 劳教分支再追加 `_userCode / _userName / _userType / appId` 以及一组劳教额外字段（`core/network/AuthInterceptor.kt:85-97`）。改这条链路时，两边要一起看。
 - **跑步数据加密必须字段名和值都加密**（业务层约束，使用 `SportsRetrofit` 上游）：用 `RSAUtils.encryptSportData()`（`core/auth/RSAUtils.kt:36`）。来源：`docs/接口分析/跑步接口深度分析报告.md`。
 - **大一大二智慧运动复用 SportsRetrofit，但接口形态不同**：`extraInfo/extraDetailInfo/index/clubInfo/auto/clubInfo` 是表单接口，`qrcode/getQrcodeResult.do` 是 multipart 轮询接口；年级参数 `grade` 直接取 `checkDsStudent.do` 的 `result`，不本地推断。
+- **HTTP BODY 日志只在 debuggable 构建开启** —— `HttpLoggingInterceptor.Level.BODY` 会把 `accessToken`、学号、课表等明文全量写进 logcat，因此两条 client 都改经 `bodyLoggingOrNull(context)` 取拦截器，release 下根本不装日志拦截器（`core/network/NetworkModule.kt:58-63`）。用 `ApplicationInfo.FLAG_DEBUGGABLE` 而非 `BuildConfig.DEBUG`：本项目未启用 `buildFeatures.buildConfig`。排查线上无关的真机网络问题时，需要先装 debug 包才能看到请求/响应体。
 - **观察项：`AuthInterceptor` 顶部注释过时**（`AuthInterceptor.kt:16`）—— 注释说"查寝不由 Interceptor 注入（在 Api 层处理）"，但实际 54-69 行已经注入。交给下次维护者修注释。
 - **观察项：`MainRetrofit` 当前无消费者**（`core/network/NetworkModule.kt:64-66`）—— provider 已存在，但 `app/src/main/java/com/lightxin/feature/` 下暂无注入点；后续若新增主站 `zhxy-new-scps` 请求，应先复用这条 provider。
 - **观察项：当前退出链不会清 FIF 会话**（`feature/home/ui/ProfileViewModel.kt:49-53` / `core/auth/SessionManager.kt:18-20`）—— UI 登出只清校内 DataStore，不会触发 `FifSessionManager.clear()`。
