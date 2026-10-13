@@ -46,7 +46,14 @@ data class RunningUiState(
     val defaultTemplate: RouteTemplate? = null,
     val templateCount: Int = 0,
     val advancedEnabled: Boolean = false,
-)
+) {
+    /** 只有申请过 exerciseId 的会话才是真实跑步；模板录制同样让 isSessionActive 为 true。 */
+    val isRunSessionActive: Boolean
+        get() = trackerState.isSessionActive && trackerState.startInfo != null
+
+    val isTemplateRecordingActive: Boolean
+        get() = trackerState.isSessionActive && trackerState.startInfo == null
+}
 
 @HiltViewModel
 class RunningViewModel @Inject constructor(
@@ -208,9 +215,12 @@ class RunningViewModel @Inject constructor(
         if (_uiState.value.isSubmittingSimulation) return
         val config = validateSimulation() ?: return
         val template = _uiState.value.defaultTemplate
-        val overridePoints = template?.let { TrajectoryGenerator.generateFromTemplate(config, it) }
-        val templatePoints = overridePoints?.takeIf { it.size >= 2 }
-        val trajectorySize = templatePoints?.size ?: TrajectoryGenerator.generate(config).size
+        val templateTrajectory = template
+            ?.let { TrajectoryGenerator.generateFromTemplate(config, it) }
+            ?.takeIf { it.points.size >= 2 }
+        val usedTemplateId = templateTrajectory?.let { template?.id }
+        val trajectorySize = templateTrajectory?.points?.size
+            ?: TrajectoryGenerator.generate(config).points.size
 
         _uiState.update {
             it.copy(
@@ -221,21 +231,9 @@ class RunningViewModel @Inject constructor(
             )
         }
 
-        val submitCall = if (templatePoints != null) {
-            repository.submitSimulation(
-                config = config,
-                overridePoints = templatePoints,
-                overrideIsBd09 = false,
-            )
-        } else {
-            repository.submitSimulation(config)
-        }
-
-        submitCall.fold(
+        repository.submitSimulation(config, templateTrajectory).fold(
             onSuccess = { result ->
-                if (templatePoints != null) {
-                    templateStore.markUsed(template.id)
-                }
+                usedTemplateId?.let { templateStore.markUsed(it) }
                 _uiState.update {
                     it.copy(
                         isSubmittingSimulation = false,
@@ -305,7 +303,7 @@ class RunningViewModel @Inject constructor(
                 refreshDashboard()
             },
             onFailure = { error ->
-                tracker.completeSession()
+                // 不 clear session：轨迹与 exerciseId 要留着，回跑步页还能重试上传
                 _uiState.update {
                     it.copy(
                         isUploadingRun = false,

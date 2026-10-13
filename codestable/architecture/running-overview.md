@@ -2,10 +2,10 @@
 doc_type: architecture
 slug: running-overview
 scope: 跑步模块的整体架构，覆盖真实 GPS 跑步、前台 Service 跟踪、模拟提交、路线模板录制与管理、大一大二智慧运动分流、俱乐部/锻炼考勤、以及跑步数据加密上传链路
-summary: running 以 RunningRepository + RunningTracker 为主干，把真实跑步、模拟提交、模板录制收束到 RunningSnapshot 上传模型；智慧运动入口按 checkDsStudent.result 分流，大一大二读取 extraInfo/extraDetailInfo 与 clubInfo，上传成功需同时满足 result=OK 和有效非 0 id
+summary: running 以 RunningRepository + RunningTracker 为主干，把真实跑步、模拟提交、模板录制收束到 RunningSnapshot 上传模型；模拟轨迹统一经 PolylineSampler 插值并由 GeneratedTrajectory 携带坐标系标记；智慧运动入口按 checkDsStudent.result 分流，大一大二读取 extraInfo/extraDetailInfo 与 clubInfo，上传成功需同时满足 result=OK 和有效非 0 id
 status: current
-last_reviewed: 2026-05-31
-tags: [running, gps, service, route-template, rsa, sports, grade, club]
+last_reviewed: 2026-10-13
+tags: [running, gps, service, route-template, rsa, sports, grade, club, trajectory-sampling]
 depends_on: [network-overview]
 ---
 
@@ -22,6 +22,7 @@ depends_on: [network-overview]
 - **俱乐部摘要/任务** — 大一大二分支的 `ClubSummary` 来自 `mobile/index/clubInfo.do`，俱乐部详情任务来自 `mobile/auto/clubInfo.do`
 - **锻炼考勤** — 俱乐部活动任务的本地二维码 + `getQrcodeResult.do` 轮询确认流程
 - **有效上传 ID** — 跑步上传返回必须同时满足 `result=OK` 且 `id` 非空、非 `"0"`；否则按失败处理，避免 UI 显示“成功”但今日里程仍为 0
+- **轨迹锁定** — `stopCollecting()` 把 `endTimeMillis` 写进 `RunningTrackerState`，此后不再接受新 GPS 点，重试上传用的仍是锁定时的距离与时长
 
 ## 1. 定位与受众
 
@@ -123,10 +124,14 @@ depends_on: [network-overview]
 
 - 先校验距离 / 时长 / 开始时间 / 速度区间
 - 若存在默认模板，则调用 `TrajectoryGenerator.generateFromTemplate(config, template)`
-- 若无默认模板或模板不可用，则退回 `TrajectoryGenerator.generate(config)` 的内置校园路线
-- 最终都交给 `repository.submitSimulation()`，由它先 `startRunning()` 取 `exerciseId`，再构造 `RunningSnapshot` 并复用统一上传链路
+- 若无默认模板，或模板采样结果不足 2 个点，则退回 `TrajectoryGenerator.generate(config)` 的内置校园路线
+- 最终都交给 `repository.submitSimulation(config, overrideTrajectory)`，由它先 `startRunning()` 取 `exerciseId`，再构造 `RunningSnapshot` 并复用统一上传链路
 
-锚点：`feature/running/ui/RunningViewModel.kt:207-264,327-370` / `feature/running/ui/RunningSimScreen.kt:79-123,126-220,231-231` / `feature/running/data/RunningRepository.kt:107-135` / `feature/running/domain/TrajectoryGenerator.kt:42-70`。
+锚点：`feature/running/ui/RunningViewModel.kt:214-270` / `feature/running/ui/RunningSimScreen.kt:79-123,126-220,231-231` / `feature/running/data/RunningRepository.kt:230-252` / `feature/running/domain/TrajectoryGenerator.kt:41-61`。
+
+**两条生成分支现在走同一个采样器**。`TrajectoryGenerator` 的内置环线和用户模板都经 `sampleClosedLoop()` → `PolylineSampler` 做段内线性插值，并在末尾补上闭合段。此前内置路线直接取 8 个顶点，相邻点名义步长 40 m、实际几何跳变 100–300 m；现在与模板路径共用同一套步长口径（默认 30 m），且同一 `SimConfig` 两次生成结果一致（`PolylineSampler` 用 `Random(startTimeMillis)` 定种，旧的内置分支用全局 `Random` 做抖动，结果不可复现）。
+
+坐标系改由 `GeneratedTrajectory.isBd09` 随数据一起传递：内置环线标 `true`（顶点按 BD-09 采集，见 `RunningCampus` 顶部注释），用户模板标 `false`（原生 GPS = WGS-84）。仓库不再在两处硬编码这个布尔值。
 
 模拟与真实跑步共用同一套上传协议，唯一区别是轨迹来源从 GPS 采集换成了生成器。
 
@@ -140,7 +145,7 @@ depends_on: [network-overview]
 | `RouteTemplateStore` | 以单 JSON 文件持久化模板，并用 `Mutex` 保证写入串行 |
 | `TrajectoryGenerator + PolylineSampler` | 消费默认模板，生成模拟轨迹 |
 
-锚点：`feature/running/ui/RouteTemplateViewModel.kt:33-125` / `feature/running/data/RouteTemplateStore.kt:24-137` / `feature/running/domain/TrajectoryGenerator.kt:63-70` / `feature/running/domain/PolylineSampler.kt:11-118`。
+锚点：`feature/running/ui/RouteTemplateViewModel.kt:33-125` / `feature/running/data/RouteTemplateStore.kt:24-137` / `feature/running/domain/TrajectoryGenerator.kt:41-61` / `feature/running/domain/PolylineSampler.kt:11-105`。
 
 录制路径是：
 
@@ -183,12 +188,13 @@ navigation 层把 running 明确拆成两套共享作用域：
 
 | 类型 | 含义 | 定义位置 |
 |---|---|---|
-| `RunningDashboard` | 跑步首页统计摘要 | `feature/running/domain/RunningModels.kt:3-13` |
+| `RunningDashboard` | 跑步首页统计摘要 | `feature/running/domain/RunningModels.kt:3-14` |
 | `ClubSummary` | 大一大二俱乐部摘要卡片数据 | `feature/running/domain/RunningModels.kt:17-22` |
-| `RunningStartInfo` | 一次服务端跑步会话的起始元数据（`exerciseId/memberId` 等） | `feature/running/domain/RunningModels.kt:15-22` |
-| `TrackPoint` | 统一轨迹点模型 | `feature/running/domain/RunningModels.kt:24-28` |
-| `RunningTrackerState` | 当前采集中的内存态 | `feature/running/domain/RunningModels.kt:30-40` |
-| `RunningSnapshot` | 上传前的统一中间态 | `feature/running/domain/RunningModels.kt:42-49` |
+| `RunningStartInfo` | 一次服务端跑步会话的起始元数据（`exerciseId/memberId` 等） | `feature/running/domain/RunningModels.kt:24-31` |
+| `TrackPoint` | 统一轨迹点模型 | `feature/running/domain/RunningModels.kt:33-37` |
+| `RunningTrackerState` | 当前采集中的内存态，含 `endTimeMillis` 轨迹锁定位 | `feature/running/domain/RunningModels.kt:39-50` |
+| `RunningSnapshot` | 上传前的统一中间态 | `feature/running/domain/RunningModels.kt:52-59` |
+| `GeneratedTrajectory` | 模拟轨迹 + 它的坐标系标记 | `feature/running/domain/RunningModels.kt:66-75` |
 | `RouteTemplate` | 本地可复用模板资产 | `feature/running/domain/RouteTemplate.kt:3-18` |
 | `GeoDistance` | 统一 Haversine 米制距离计算 | `feature/running/domain/GeoDistance.kt:9-18` |
 | `ClubTask / ClubCheckRecord` | 俱乐部任务时间线与历史打卡记录 | `feature/running/exercise/domain/ClubModels.kt` |
@@ -217,29 +223,39 @@ navigation 层把 running 明确拆成两套共享作用域：
 
 ## 5. 代码锚点
 
-- `feature/running/ui/RunningViewModel.kt` — 真实跑步、模拟提交、结果态编排
-- `feature/running/data/RunningRepository.kt:33-202` — 首页统计、开始跑步、统一上传链路
-- `feature/running/service/RunningTracker.kt:24-118` — 共享采集状态机
+- `feature/running/ui/RunningViewModel.kt:214-270` — 模拟提交调度
+- `feature/running/ui/RunningViewModel.kt:290-322` — 上传成功/失败与会话保留
+- `feature/running/data/RunningRepository.kt:34-224` — 首页统计、开始跑步、年级分流
+- `feature/running/data/RunningRepository.kt:230-323` — 模拟提交与统一上传链路
+- `feature/running/service/RunningTracker.kt:20-118` — 共享采集状态机与轨迹锁定
 - `feature/running/service/RunTrackingService.kt:34-89` — 前台 Service 与 GPS 采集
 - `feature/running/domain/GeoDistance.kt:9-18` — 统一距离计算
 - `feature/running/data/RunningEncryption.kt:27-59` — 跑步上传 RSA 加密
-- `feature/running/domain/TrajectoryGenerator.kt:42-70` — 内置路线 / 模板路线双生成入口
-- `feature/running/domain/PolylineSampler.kt:26-63` — 模板 polyline 采样
+- `feature/running/domain/TrajectoryGenerator.kt:41-61` — 内置路线 / 模板路线双生成入口，共用闭环采样
+- `feature/running/domain/PolylineSampler.kt:22-59` — polyline 插值采样
+- `feature/running/domain/RunningCampus.kt:5-11` — 内置环线中心点与坐标系假设说明
 - `feature/running/ui/RouteTemplateViewModel.kt:64-107` — 模板录制保存与质量校验接入点
 - `feature/running/data/RouteTemplateStore.kt:24-137` — 模板持久化边界
+- `feature/running/ui/RunningHomeScreen.kt:89-108` — 真实跑步入口与互斥守卫
 - `navigation/NavGraph.kt:169-292` — 主跑步链 / 模板子链的共享作用域
 
 ## 6. 已知约束 / 边界情况
 
 - **模拟与真实上传共用同一服务端协议** —— 不要为模拟模式另造上传接口；统一走 `RunningSnapshot -> uploadSnapshot()`。
-- **模板录制和真实跑步不能并发** —— `RouteTemplateViewModel.beginRecording()` 会在已有真实跑步会话时拒绝录制（`feature/running/ui/RouteTemplateViewModel.kt:64-73`）。
+- **模板录制和真实跑步不能并发，且守卫是双向的** —— `RouteTemplateViewModel.beginRecording()` 拒绝在跑步会话中录制；反向由 `RunningUiState.isRunSessionActive` / `isTemplateRecordingActive` 把关（`feature/running/ui/RunningViewModel.kt:50-56` / `feature/running/ui/RunningHomeScreen.kt:89-108`）。判据是 `startInfo` 是否存在，而不是 `isSessionActive` —— 两种会话都会让后者为真。
+- **上传失败保留会话** —— `uploadSnapshot()` 只在成功时 `completeSession()`；失败时轨迹和 `exerciseId` 留在 `RunningTracker` 里，回跑步页可重试（`feature/running/ui/RunningViewModel.kt:290-322`）。代价是服务端可能留下一个未完成的跑步会话，重试沿用同一个 `exerciseId`。
+- **结束时间锁定在 `stopCollecting()`** —— `RunningTrackerState.endTimeMillis` 一旦写入就不再随重试推移，失败后多等几分钟不会把配速算慢（`feature/running/service/RunningTracker.kt:99-118`）。锁定后 `onLocationUpdate()` 不再接受新点。
 - **模板保存有两级校验** —— `RouteTemplateRules` 负责硬拒绝，`RouteQualityChecker` 只给 WARNING，不直接拒绝（`feature/running/domain/RouteTemplate.kt:43-52` / `feature/running/domain/RouteQualityChecker.kt:23-56`）。
-- **上传前才做 WGS-84 -> BD-09 转换** —— 真实跑步采集阶段保留原生坐标，统一在 repository 上传前转换（`feature/running/data/RunningRepository.kt:146-157`）。
+- **上传前才做 WGS-84 -> BD-09 转换** —— 真实跑步采集阶段保留原生坐标；模拟轨迹是否已转换由 `GeneratedTrajectory.isBd09` 随数据一起带下来，仓库不再自行判断（`feature/running/data/RunningRepository.kt:263-274`）。**内置环线按 BD-09 采集这一假设没有抓包出处**，`RunningCampus.kt:5-11` 记了反证入口。
+- **内置路线现在也走 `PolylineSampler`** —— 曾经直接取 8 个顶点，导致名义 40 m 步长、实际百米级跳变；改动后两条生成分支共享同一采样口径，且同一 `SimConfig` 结果可复现（`feature/running/domain/TrajectoryGenerator.kt:41-61`）。
+- **两个单 JSON 存储的落盘都是"写 tmp + rename 覆盖"** —— 不允许先 `delete` 再 `rename`：rename 失败时会连已有文件一起丢掉（`feature/running/data/RouteTemplateStore.kt:128-133` / `feature/schedule/data/ScheduleCacheStore.kt:109-118`）。rename 失败只清 tmp，保留旧文件。
 - **跑步加密要求字段名和值都加密** —— 不能只加密 JSON value（`feature/running/data/RunningEncryption.kt:37-58`）。
+- **repository 的 `catch` 一律先重抛 `CancellationException`** —— 否则 ViewModel 离开页面触发的取消会被当成业务失败继续写 UI state（`feature/running/data/RunningRepository.kt`，6 处）。
 - **`runningType` 当前按 `"1"` 处理** —— 代码与本地协议文档都按这一假设实现；若后续补抓发现跑团/补跑场景存在分支，这里要回看。来源：`docs/接口分析/跑步接口深度分析报告.md` §8.10。
 - **年级只读服务端 result** —— 不按学号、性别或本地规则推断年级；大一大二目标值只取服务端字段，`extraDetailInfo` 只能作为接口失败时的目标兜底来源。
-- **大一大二开始跑步不走 startRunning.do** —— 会话标识来自 `extraInfo.do` 的 `extraId` 与 `extraDetailInfo.do` 的 `memberId/mixOnceMile`（`feature/running/data/RunningRepository.kt:162-219`）。
-- **上传成功要校验有效 ID** —— `result=OK` 但 `id` 为空或 `"0"` 视为失败，提示服务端未生成有效跑步记录（`feature/running/data/RunningRepository.kt:287-305`）。
+- **大一大二开始跑步不走 startRunning.do** —— 会话标识来自 `extraInfo.do` 的 `extraId` 与 `extraDetailInfo.do` 的 `memberId/mixOnceMile`（`feature/running/data/RunningRepository.kt:212-228`）。
+- **上传成功要校验有效 ID** —— `result=OK` 但 `id` 为空或 `"0"` 视为失败，提示服务端未生成有效跑步记录（`feature/running/data/RunningRepository.kt:293-311`）。
+- **拒绝通知权限不再阻断跑步** —— 入口只强制要求定位权限；`POST_NOTIFICATIONS` 被拒仅影响前台服务通知可见性（`feature/running/ui/RunningHomeScreen.kt:73-88`）。
 
 ## 7. 相关文档
 

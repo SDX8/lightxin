@@ -39,6 +39,7 @@ data class TrackPoint(
 data class RunningTrackerState(
     val startInfo: RunningStartInfo? = null,
     val startTimeMillis: Long = 0L,
+    val endTimeMillis: Long? = null,
     val isSessionActive: Boolean = false,
     val isCollecting: Boolean = false,
     val totalDistanceMeters: Double = 0.0,
@@ -61,6 +62,15 @@ data class SimConfig(
     val distanceKm: Double,
     val durationMinutes: Int,
     val startTimeMillis: Long,
+)
+
+/**
+ * 生成好的模拟轨迹，自带坐标系标记。
+ * 上传方据此决定是否做 WGS-84 → BD-09 转换，避免在调用处各自猜测。
+ */
+data class GeneratedTrajectory(
+    val points: List<TrackPoint>,
+    val isBd09: Boolean,
 )
 
 data class RunningResult(

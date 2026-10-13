@@ -1,7 +1,7 @@
 # 轻小信 (LightXin) 架构总入口
 
-> 状态：持续同步（2026-05-31 同步实况通知、智慧运动年级分流与课表第 0 节边界）
-> 创建日期：2026-04-21（最近更新：2026-05-31）
+> 状态：持续同步（2026-10-12 同步课表断网本地快照回退）
+> 创建日期：2026-04-21（最近更新：2026-10-12）
 
 ## 1. 项目简介
 
@@ -25,6 +25,8 @@
 | `publicKey / publicKey2` | RSA 登录密码加密公钥 / 跑步数据加密公钥；两者不可混用；见 `core/auth/RSAUtils.kt` |
 | `FIF` | AI 课堂接入的第三方教学平台 (`sttp.fifedu.com`)；独立登录态、独立会话、与校内主站 token 体系不互通；SSO 链路由 `core/network/FifSessionManager.kt` 承载 |
 | `RouteTemplate` | 跑步模拟提交用的路线模板资产；以 JSON 文件落地（非 Room），由 `RouteTemplateStore` 管理、`TrajectoryGenerator` 消费、`RouteQualityChecker` 校验 |
+| `GeneratedTrajectory` | 模拟轨迹及其坐标系标记（`isBd09`）；内置环线为 BD-09，用户录制模板为 WGS-84，上传方据此决定是否转换 |
+| `ScheduleCacheStore` | 课表离线快照：`filesDir/schedule_cache.json` 存 `CachedWeekInfo` + 逐周 `CachedCourseWeek`，`ScheduleRepository` 成功后 write-through、失败时回退并用 `cachedAtMillis` 标注新鲜度；见 `feature/schedule/data/ScheduleCacheStore.kt` |
 | `HolidayTask` | 节假日离返校登记任务；入口在首页卡片和查寝列表页双 section，表单页由 `feature/holiday/` 独立承载 |
 | `LiveActivityNotifier` | 跨 feature 的实况通知统一门面；根据设备能力选择 Flyme 私有 / Android 16 promoted / 普通通知 backend |
 | `MoreFeaturesScreen` | 更多功能聚合页；承载劳动教育、考试成绩、素质学分，以及实况通知权限引导开关 |
@@ -49,7 +51,7 @@
 |---|---|
 | `login` | 登录 + RSA 密码加密 + Token 存取 |
 | `home` | 首页容器 + 底部导航 + 场景驱动叙事（`HomeScene` / `SubtitleLibrary` / `HomeBootstrap` 预加载）；详见 [`home-overview.md`](home-overview.md) |
-| `schedule` | 周课表 + 三态周选择器（当前 / 选中 / 其他）+ 支持第 0 节的动态节次网格 |
+| `schedule` | 周课表 + 三态周选择器（当前 / 选中 / 其他）+ 支持第 0 节的动态节次网格 + 断网本地快照回退；详见 [`schedule-overview.md`](schedule-overview.md) |
 | `checkin` | 查寝签到：任务列表 / 详情 / 照片上传 / 提交；列表页同时承载 fdygl 同源节假日任务入口 |
 | `holiday` | 节假日离返校登记：任务列表状态判断 / 表单回填 / 保存提交，入口挂在首页卡片与查寝列表页；详见 [`holiday-overview.md`](holiday-overview.md) |
 | `running` | 跑步：GPS 真实模式（前台 `RunTrackingService`）+ 模拟模式（`TrajectoryGenerator`）+ **路线模板系统**（录制 / 列表 / 详情 / 质量校验 / 设置页）+ 大一大二智慧运动分流 / 俱乐部 / 锻炼考勤；详见 [`running-overview.md`](running-overview.md) |
@@ -72,7 +74,7 @@
 > - [`home-overview.md`](home-overview.md) — 启动预加载 + 场景判定 + 副标题与首页骨架
 > - [`designsystem-overview.md`](designsystem-overview.md) — Token 两层结构 + 11 个通用组件 + Compose Dark 与资源层 forceDarkAllowed 的正交关系
 > - [`login-overview.md`](login-overview.md) — RSA 加密登录 + Token 持久化
-> - [`schedule-overview.md`](schedule-overview.md) — 周课表 + 三态周选择器
+> - [`schedule-overview.md`](schedule-overview.md) — 周课表 + 三态周选择器 + 断网本地快照回退
 > - [`checkin-overview.md`](checkin-overview.md) — 查寝签到全流程（定位/拍照/提交）+ fdygl 同源任务列表入口
 > - [`holiday-overview.md`](holiday-overview.md) — 节假日离返校登记（首页卡片 + 查寝列表双 section + 独立登记表单）
 > - [`labor-overview.md`](labor-overview.md) — 工时总览 + 活动记录（只读）
@@ -90,6 +92,7 @@
 - **多域名网络层** — Hilt `@Qualifier` 区分 7 个 Retrofit 实例，共享同一个 `OkHttpClient`；**FIF 除外**：独立 `OkHttpClient` + `CookieJar`（SSO + SESSION 管理必须独立）；认证方式差异由 `AuthInterceptor` 按 URL 路由 → [`decision-fif-independent-okhttp-stack`](compound/2026-04-22-decision-fif-independent-okhttp-stack.md)
 - **不引入任何地图 SDK** — 定位走原生 `LocationManager`；跑步仪表盘不展示地图轨迹；坐标转换手写 → [`decision-no-map-sdk`](compound/2026-04-22-decision-no-map-sdk.md)
 - **路线模板用 JSON 文件存储而非 Room** — 保持轻量、避免 DB schema 迁移成本 → [`decision-route-template-json-not-room`](compound/2026-04-22-decision-route-template-json-not-room.md)
+- **课表离线走应用层 JSON 快照** — 课表接口全是 POST 表单，OkHttp HTTP 缓存不命中；`ScheduleCacheStore` 成功后 write-through、失败时回退并透出快照时间，首页与课程倒计时通知复用同一入口自动获得离线能力 → [`decision-schedule-offline-snapshot`](compound/2026-10-12-decision-schedule-offline-snapshot.md)
 - **扫码用官方 ML Kit**，不用 ZXing → [`decision-ml-kit-barcode`](compound/2026-04-22-decision-ml-kit-barcode.md)
 - **首页从"4 卡 dashboard"改为"此刻我该做什么"叙事结构**（Phase 9C 核心改动）→ [`decision-home-narrative-structure`](compound/2026-04-22-decision-home-narrative-structure.md)
 - **线性底栏图标**（Phase 9B）—— 底栏用 `Icons.Outlined.*`，不切 `Filled.*`，靠陶土色高亮区分选中；主题同时支持 Light / Dark（Compose 层跟随系统），资源层 `forceDarkAllowed=false` 防厂商强制反色滤镜
@@ -108,4 +111,4 @@
 
 ---
 
-> 本文档反映 2026-05-31 真实代码状态。`docs/项目规划/` 下五份文档（`项目规划.md` / `AI课堂开发规划.md` / `路线模拟实现文档.md` / `正式版预期功能.md` / `homepage-design-spec.md`）多数已是"完成记录"而非未来方向；`docs/接口分析/` 下文档仍是长期有效的协议参考与踩坑实录。
+> 本文档反映 2026-10-12 真实代码状态（课表离线快照已落地；模块数量与 Retrofit 实例数以代码为准）。`docs/项目规划/` 下五份文档（`项目规划.md` / `AI课堂开发规划.md` / `路线模拟实现文档.md` / `正式版预期功能.md` / `homepage-design-spec.md`）多数已是"完成记录"而非未来方向；`docs/接口分析/` 下文档仍是长期有效的协议参考与踩坑实录。

@@ -6,6 +6,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.location.CoordinateConverter
+import com.lightxin.feature.running.domain.GeneratedTrajectory
 import com.lightxin.feature.running.domain.RunningDashboard
 import com.lightxin.feature.running.domain.RunningResult
 import com.lightxin.feature.running.domain.RunningSnapshot
@@ -14,6 +15,7 @@ import com.lightxin.feature.running.domain.SimConfig
 import com.lightxin.feature.running.domain.TrackPoint
 import com.lightxin.feature.running.domain.TrajectoryGenerator
 import dagger.hilt.android.scopes.ViewModelScoped
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import java.time.Instant
@@ -120,6 +122,8 @@ class RunningRepository @Inject constructor(
                     )
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "获取跑步首页失败", e))
         }
@@ -132,6 +136,8 @@ class RunningRepository @Inject constructor(
             val clubJson = api.getClubDetail(params + ("grade" to grade))
             clubJson.requireSportsSuccess("获取俱乐部详情失败")
             Result.success(ClubDetailMapper.parseTasks(clubJson))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "获取俱乐部详情失败", e))
         }
@@ -151,6 +157,8 @@ class RunningRepository @Inject constructor(
                 ?.takeIf { it.isJsonObject }?.asJsonObject
                 ?.get("hasResult")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
             Result.success(hasResult.equals("YES", ignoreCase = true))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "查询打卡结果失败", e))
         }
@@ -193,6 +201,8 @@ class RunningRepository @Inject constructor(
                     taskFlag = response.lookupString("taskFlag"),
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "开始跑步失败", e))
         }
@@ -219,29 +229,23 @@ class RunningRepository @Inject constructor(
 
     suspend fun submitSimulation(
         config: SimConfig,
-        overridePoints: List<TrackPoint>? = null,
-        overrideIsBd09: Boolean = false,
+        overrideTrajectory: GeneratedTrajectory? = null,
     ): Result<RunningResult> {
         return try {
             val startInfo = startRunning().getOrElse { return Result.failure(it) }
-            val trajectory: List<TrackPoint>
-            val isBd09: Boolean
-            if (overridePoints != null && overridePoints.size >= 2) {
-                trajectory = overridePoints
-                isBd09 = overrideIsBd09
-            } else {
-                trajectory = TrajectoryGenerator.generate(config)
-                isBd09 = true
-            }
+            val trajectory = overrideTrajectory?.takeIf { it.points.size >= 2 }
+                ?: TrajectoryGenerator.generate(config)
             val snapshot = RunningSnapshot(
                 startInfo = startInfo,
                 startTimeMillis = config.startTimeMillis,
                 durationSeconds = config.durationMinutes * 60L,
                 distanceMeters = config.distanceKm * 1000.0,
-                points = trajectory,
-                pointsAreBd09 = isBd09,
+                points = trajectory.points,
+                pointsAreBd09 = trajectory.isBd09,
             )
             uploadSnapshot(snapshot)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "模拟提交失败", e))
         }
@@ -311,6 +315,8 @@ class RunningRepository @Inject constructor(
                     pointCount = route.size,
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "上传跑步记录失败", e))
         }
