@@ -4,10 +4,12 @@ import kotlin.math.cos
 
 object RunningCampus {
 
-    // 坐标系假设：内置环线顶点按 BD-09 对待（TrajectoryGenerator.generate 标 isBd09=true，
-    // 上传时不再做转换）；模板录制拿到的是原生 GPS（WGS-84），上传前经 wgs84ToBd09 转换。
-    // 该假设没有抓包出处。可用的反证入口是 RouteQualityChecker.inCampus —— 它拿同一组常量
-    // 去判定真机录制的 WGS-84 点；若录制模板普遍报「超出校园范围」，说明这里不是 BD-09。
+    // 坐标系：内置环线顶点按 BD-09 对待（TrajectoryGenerator.generate 标 isBd09=true，上传时不再
+    // 转换）；模板录制拿到的是原生 GPS（WGS-84），上传前经 wgs84ToBd09 转换。
+    // 「服务端要 BD-09」已由官方 H5 证实：详情页用 BMap 绘制，并以 BMap.Convertor.translate(pts,1,5)
+    // 做 WGS-84→BD-09，见 codestable/compound/2026-10-13-explore-sports-h5-protocol-evidence.md §1。
+    // 但这组常量本身属于哪种坐标系仍无一手出处；RouteQualityChecker.inCampus 用同一组常量判真机
+    // 录制的 WGS-84 点，若普遍报「超出校园范围」，说明这里不是 BD-09。
     const val CENTER_LATITUDE = 31.13893
     const val CENTER_LONGITUDE = 118.628131
 

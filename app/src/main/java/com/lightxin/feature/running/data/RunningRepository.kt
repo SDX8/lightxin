@@ -7,6 +7,8 @@ import com.google.gson.JsonObject
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.location.CoordinateConverter
 import com.lightxin.feature.running.domain.GeneratedTrajectory
+import com.lightxin.feature.running.domain.RouteQualityChecker
+import com.lightxin.feature.running.domain.RouteQualityStatus
 import com.lightxin.feature.running.domain.RunningDashboard
 import com.lightxin.feature.running.domain.RunningResult
 import com.lightxin.feature.running.domain.RunningSnapshot
@@ -294,7 +296,7 @@ class RunningRepository @Inject constructor(
             val uploadId = response.lookupString("id")
             val success = resultCode.equals("OK", ignoreCase = true) && uploadId.isValidUploadId()
             val message = when {
-                success -> "上传成功"
+                success -> "上传成功" + trajectoryWarning(route)
                 resultCode.equals("OK", ignoreCase = true) ->
                     "服务器未生成有效跑步记录（id=${uploadId.ifBlank { "空" }}），本次里程可能未入账"
                 else -> response.lookupString("msg", "result").ifBlank { "上传失败" }
@@ -322,6 +324,16 @@ class RunningRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "上传跑步记录失败", e))
         }
+    }
+
+    /**
+     * 真实跑步此前不做任何轨迹质量检查（只有模板录制会查），白跑一场也不知道原因。
+     * 这里检查的是"已转成 BD-09、即将上传"的点集 —— 与围栏常量同一坐标系，才有意义。
+     */
+    private fun trajectoryWarning(route: List<TrackPoint>): String {
+        val quality = RouteQualityChecker.evaluate(route)
+        val reason = quality.message?.takeIf { it.isNotBlank() } ?: return ""
+        return if (quality.status == RouteQualityStatus.PASS) "" else "（注意：$reason）"
     }
 
     private suspend fun sportsAuthParams(): Map<String, String> {
