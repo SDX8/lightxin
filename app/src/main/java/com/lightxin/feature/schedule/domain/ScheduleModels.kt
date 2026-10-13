@@ -5,6 +5,8 @@ data class WeekInfo(
     val totalWeeks: Int,
     val schoolYear: String,
     val schoolTerm: String,
+    /** 非空表示数据来自本地快照（断网回退），值为缓存写入时刻 */
+    val cachedAtMillis: Long? = null,
 )
 
 data class Course(
@@ -22,4 +24,6 @@ data class Course(
 data class ScheduleData(
     val courses: List<Course>,
     val weekDates: Map<Int, String>,
+    /** 非空表示数据来自本地快照（断网回退），值为缓存写入时刻 */
+    val cachedAtMillis: Long? = null,
 )

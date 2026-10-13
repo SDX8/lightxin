@@ -19,27 +19,44 @@ import javax.inject.Singleton
 class ScheduleRepository @Inject constructor(
     private val api: ScheduleApi,
     private val tokenManager: TokenManager,
+    private val cacheStore: ScheduleCacheStore,
 ) {
     suspend fun getWeekInfo(): Result<WeekInfo> {
+        val userCode = tokenManager.getUserCode().orEmpty()
         return try {
             val response = api.getWeekList()
             val data = response.data
             val rows = response.rows
 
             if (data == null) {
-                Result.failure(Exception("获取周次信息失败"))
-            } else {
-                Result.success(
-                    WeekInfo(
-                        currentWeek = data.week?.toIntOrNull() ?: 1,
-                        totalWeeks = rows?.size ?: 18,
-                        schoolYear = data.schoolYear ?: "",
-                        schoolTerm = data.schoolTerm ?: "",
+                throw IllegalStateException("获取周次信息失败")
+            }
+            val weekInfo = WeekInfo(
+                currentWeek = data.week?.toIntOrNull() ?: 1,
+                totalWeeks = rows?.size ?: 18,
+                schoolYear = data.schoolYear ?: "",
+                schoolTerm = data.schoolTerm ?: "",
+            )
+            if (userCode.isNotBlank()) {
+                cacheStore.saveWeekInfo(
+                    CachedWeekInfo(
+                        userCode = userCode,
+                        currentWeek = weekInfo.currentWeek,
+                        totalWeeks = weekInfo.totalWeeks,
+                        schoolYear = weekInfo.schoolYear,
+                        schoolTerm = weekInfo.schoolTerm,
+                        cachedAtMillis = System.currentTimeMillis(),
                     )
                 )
             }
+            Result.success(weekInfo)
         } catch (e: Exception) {
-            Result.failure(Exception(mapErrorMessage("获取周次", e), e))
+            val cached = userCode.takeIf { it.isNotBlank() }?.let { cacheStore.weekInfo(it) }
+            if (cached != null) {
+                Result.success(cached.toWeekInfo())
+            } else {
+                Result.failure(Exception(mapErrorMessage("获取周次", e), e))
+            }
         }
     }
 
@@ -82,10 +99,37 @@ class ScheduleRepository @Inject constructor(
                 }
             }
 
-            Result.success(ScheduleData(courses = courses, weekDates = weekDates))
+            val data = ScheduleData(courses = courses, weekDates = weekDates)
+            cacheStore.saveCourses(
+                CachedCourseWeek(
+                    userCode = userCode,
+                    schoolYear = schoolYear,
+                    schoolTerm = schoolTerm,
+                    week = week,
+                    cachedAtMillis = System.currentTimeMillis(),
+                    courses = courses.toList(),
+                    weekDates = weekDates.mapKeys { (day, _) -> day.toString() },
+                )
+            )
+            Result.success(data)
         } catch (e: Exception) {
-            Result.failure(Exception(mapErrorMessage("加载课表", e), e))
+            val cached = cachedCourses(schoolYear, schoolTerm, week)
+            if (cached != null) {
+                Result.success(cached.toScheduleData())
+            } else {
+                Result.failure(Exception(mapErrorMessage("加载课表", e), e))
+            }
         }
+    }
+
+    private suspend fun cachedCourses(
+        schoolYear: String,
+        schoolTerm: String,
+        week: Int,
+    ): CachedCourseWeek? {
+        val userCode = tokenManager.getUserCode().orEmpty()
+        if (userCode.isBlank()) return null
+        return cacheStore.courses(userCode, schoolYear, schoolTerm, week)
     }
 
     private fun mapErrorMessage(action: String, error: Exception): String {

@@ -22,7 +22,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -49,14 +52,19 @@ import com.lightxin.core.designsystem.component.LxDetailRow
 import com.lightxin.core.designsystem.component.LxEmpty
 import com.lightxin.core.designsystem.component.LxError
 import com.lightxin.core.designsystem.component.LxLoading
+import com.lightxin.core.designsystem.theme.LxAmberSoft
 import com.lightxin.core.designsystem.theme.LxCategoryColors
 import com.lightxin.core.designsystem.theme.LxInk
 import com.lightxin.core.designsystem.theme.LxInkMuted
 import com.lightxin.core.designsystem.theme.LxInkSoft
 import com.lightxin.core.designsystem.theme.LxTerra
 import com.lightxin.core.designsystem.theme.LxTerraGlow
+import com.lightxin.core.designsystem.theme.LxWarning
 import com.lightxin.feature.schedule.domain.Course
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 private const val SECTION_COUNT = 10
 private val DAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
@@ -64,6 +72,7 @@ private val CELL_HEIGHT = 58.dp
 private val SECTION_LABEL_WIDTH = 32.dp
 private val GRID_START_PADDING = 12.dp
 private val GRID_END_PADDING = 10.dp
+private val OFFLINE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
 
 @Composable
 @androidx.compose.runtime.ReadOnlyComposable
@@ -96,6 +105,11 @@ fun ScheduleScreen(
                 )
             }
 
+            val cachedAt = uiState.cachedAtMillis
+            if (cachedAt != null && !uiState.isLoading && error == null) {
+                OfflineSnapshotBanner(cachedAtMillis = cachedAt)
+            }
+
             when {
                 uiState.isLoading -> LxLoading()
                 error != null -> LxError(
@@ -123,6 +137,44 @@ fun ScheduleScreen(
             CourseDetail(course = course)
         }
     }
+}
+
+// ═══════════════ 离线快照提示 ═══════════════
+
+@Composable
+private fun OfflineSnapshotBanner(cachedAtMillis: Long) {
+    val text = remember(cachedAtMillis) { buildOfflineHint(cachedAtMillis) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 8.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(LxAmberSoft)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.CloudOff,
+            contentDescription = null,
+            modifier = Modifier.size(15.dp),
+            tint = LxWarning,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            color = LxInkSoft,
+        )
+    }
+}
+
+private fun buildOfflineHint(cachedAtMillis: Long): String {
+    val stamp = OFFLINE_TIME_FORMAT.format(
+        Instant.ofEpochMilli(cachedAtMillis).atZone(ZoneId.systemDefault()),
+    )
+    // 回退原因可能是断网，也可能是登录失效 / 接口异常，措辞只陈述数据新鲜度
+    return "显示 $stamp 的课表快照（未能刷新）"
 }
 
 // ═══════════════ 周次选择器（三态胶囊） ═══════════════

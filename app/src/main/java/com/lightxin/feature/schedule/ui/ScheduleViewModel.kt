@@ -19,6 +19,8 @@ data class ScheduleUiState(
     val selectedWeek: Int = 1,
     val isLoading: Boolean = true,
     val error: String? = null,
+    /** 非空表示当前展示的是本地快照（断网回退），值为缓存写入时刻 */
+    val cachedAtMillis: Long? = null,
 )
 
 @HiltViewModel
@@ -40,7 +42,11 @@ class ScheduleViewModel @Inject constructor(
             repository.getWeekInfo().fold(
                 onSuccess = { info ->
                     _uiState.update {
-                        it.copy(weekInfo = info, selectedWeek = info.currentWeek)
+                        it.copy(
+                            weekInfo = info,
+                            selectedWeek = info.currentWeek,
+                            cachedAtMillis = info.cachedAtMillis,
+                        )
                     }
                     loadCourses(info.schoolYear, info.schoolTerm, info.currentWeek)
                 },
@@ -71,7 +77,12 @@ class ScheduleViewModel @Inject constructor(
         repository.getCourses(schoolYear, schoolTerm, week).fold(
             onSuccess = { data ->
                 _uiState.update {
-                    it.copy(courses = data.courses, weekDates = data.weekDates, isLoading = false)
+                    it.copy(
+                        courses = data.courses,
+                        weekDates = data.weekDates,
+                        isLoading = false,
+                        cachedAtMillis = data.cachedAtMillis ?: it.cachedAtMillis,
+                    )
                 }
             },
             onFailure = { e ->
