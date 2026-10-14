@@ -257,7 +257,7 @@ navigation 层把 running 明确拆成两套共享作用域：
 - **`runningType` 当前按 `"1"` 处理** —— 代码与本地协议文档都按这一假设实现；若后续补抓发现跑团/补跑场景存在分支，这里要回看。来源：`docs/接口分析/跑步接口深度分析报告.md` §8.10。
 - **年级只读服务端 result** —— 不按学号、性别或本地规则推断年级；大一大二目标值只取服务端字段，`extraDetailInfo` 只能作为接口失败时的目标兜底来源。
 - **大一大二开始跑步不走 startRunning.do** —— 会话标识来自 `extraInfo.do` 的 `extraId` 与 `extraDetailInfo.do` 的 `memberId/mixOnceMile`（`feature/running/data/RunningRepository.kt:212-228`）。
-- **`result=OK` 不代表服务端认了这条记录** —— 上传成功后还要回读 `mobile/extra/getExtraCheck.do`（参数 `checkId` = 上传返回的 id），拿 `state` / `remark` / `runningRoute` 才能确定"有效还是无效、原因是什么、轨迹存下几个点"。`RunningRepository.getRunRecord()` + `RunRecordVerdict` 负责这条链路，结果页文案由 `RunningViewModel.buildFinalResult()` 拼上"（服务端判定：…；已存轨迹 N 个点）"。解析器对 `extraInfo` 在 `data` 下还是在响应顶层都兼容。
+- **`result=OK` 不代表服务端认了这条记录** —— 上传成功后还要回读 `mobile/extra/getExtraCheck.do`（参数 `checkId` = 上传返回的 id），拿 `state` / `remark` 才知道服务端判了有效还是无效、原因是什么。`RunningRepository.getRunRecord()` + `RunRecordVerdict` 负责这条链路，结果页文案由 `RunningViewModel.buildFinalResult()` 拼上"（服务端判定：…；轨迹已存：是/否）"。`runningRoute` 在服务端是加密存储的，所以只能判断有没有存、读不出点数。解析器对 `extraInfo` 在 `data` 下还是在响应顶层都兼容。
 - **上传成功要校验有效 ID** —— `result=OK` 但 `id` 为空或 `"0"` 视为失败，提示服务端未生成有效跑步记录（`feature/running/data/RunningRepository.kt:293-311`）。
 - **`result=OK` + 有效 id 不等于里程入账** —— 服务端可能建了记录却按规则判无效（实测：当日里程已达 `maxDayMile` 时贡献为 0）。结果页因此显示 `RunningResult.creditedKm`（上传前后 `dashboard.todayKm` 之差，`feature/running/ui/RunningViewModel.kt:130-135`），为 0 时明确提示"未计入"，不再只报"上传成功"。
 - **有效速度区间以服务端下发为准** —— `extraDetailInfo.do` 的 `minSpeed` / `maxSpeed` 经 `SportsGradeMapper` 解析进 `RunningDashboard.minSpeedKmh/maxSpeedKmh`，模拟提交校验与 `RunningSimScreen` 配色都读这一对值（`feature/running/ui/RunningViewModel.kt:303-321`）。2026-10-13 实测该账号下发的是 `2`–`15` km/h；服务端未下发时兜底 2–15。此前硬编码的 6–15 是客户端自己猜的，比服务端严。

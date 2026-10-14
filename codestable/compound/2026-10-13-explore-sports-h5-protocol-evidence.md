@@ -126,17 +126,17 @@ POST /mobile/extra/addExtraCheck.do              → 200（兄弟端点，我们
 
 `addExtractCheckRecord.do` 在 `/mobile` 下**不存在**，所以 H5 那套明文载荷形态不能直接搬到我们的端点上 —— 之前据此做的 A/B 臂已回退。要用它得先实现 sports `/api` 的 CAS 登录（项目里 `FifSessionManager` 有同类先例）。
 
-### 当前头号假设：分段 RSA 的框架不匹配
+### 结案：分段 RSA 的框架不匹配（已证实）
 
 ```
 mile / speed / time  → 明文 <117 字节 → 单个 RSA 块 → 服务端解得开 → 记录里数值全对
 runningRoute         → 明文几 KB → 几十个 128 字节块拼成一个 Base64 串
-                     → 若服务端按不同的分块/编码约定解，结果就是垃圾
+                     → 服务端解不开 → 无轨迹 + 判「运动轨迹异常」
 ```
 
-这能同时解释：与坐标系无关、与速度无关、真实跑与模拟跑都失败、`runningRoute` 存得下（存的就是我们给的密文）、但地图画不出来（解不开）、于是判"运动轨迹异常"。
+实测确认：同一份数据，`runningRoute` 加密时 `state=0`、改明文后 `state=1`。修复方式与该字段现在的实现见 → [`2026-10-14-decision-running-route-plaintext.md`](2026-10-14-decision-running-route-plaintext.md)。
 
-对应的 A/B 开关：关于页「跑步轨迹字段不加密」→ `DeveloperPrefs.uploadRouteInPlaintext` → `RunningEncryption.encryptUploadPayload(payload, routeInPlaintext = true)`，其余字段与全部键名照旧加密。
+验证期间临时加过的「跑步轨迹字段不加密」调试开关（`DeveloperPrefs.uploadRouteInPlaintext`）与 H5 端点 A/B 臂都已删除，代码里只留下最终的明文实现。
 
 ## 相关文档
 
