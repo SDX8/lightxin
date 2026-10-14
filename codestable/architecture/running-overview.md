@@ -262,6 +262,8 @@ navigation 层把 running 明确拆成两套共享作用域：
 - **`result=OK` + 有效 id 不等于里程入账** —— 服务端可能建了记录却按规则判无效（实测：当日里程已达 `maxDayMile` 时贡献为 0）。结果页因此显示 `RunningResult.creditedKm`（上传前后 `dashboard.todayKm` 之差，`feature/running/ui/RunningViewModel.kt:130-135`），为 0 时明确提示"未计入"，不再只报"上传成功"。
 - **有效速度区间以服务端下发为准** —— `extraDetailInfo.do` 的 `minSpeed` / `maxSpeed` 经 `SportsGradeMapper` 解析进 `RunningDashboard.minSpeedKmh/maxSpeedKmh`，模拟提交校验与 `RunningSimScreen` 配色都读这一对值（`feature/running/ui/RunningViewModel.kt:303-321`）。2026-10-13 实测该账号下发的是 `2`–`15` km/h；服务端未下发时兜底 2–15。此前硬编码的 6–15 是客户端自己猜的，比服务端严。
 - **日限额 `maxDayMile` 当前不解析也不提示** —— 客户端不预判"今天再跑也不计里程"，提示依赖学校官方 App。要加预警时从同一份 `extraDetail` 取。
+- **"运动轨迹异常"已排除坐标系与端点选择** —— 同一账号分别上传 BD-09 与原样 WGS-84，服务端都回 `state=0 / 运动轨迹异常`；`mile`/`speed` 都在其下发限值内；`runningRoute` 以密文形式存下了。官方 H5 那条明文上传（`addExtractCheckRecord.do`）在 `/api` 上下文、受 CAS 单点登录保护，我们的 `/mobile` 上下文里该路径是 404，不能照搬。完整排除过程见 `codestable/compound/2026-10-13-explore-sports-h5-protocol-evidence.md`。
+- **当前头号假设与 A/B 开关** —— 短字段（`mile`/`speed`/`time`）明文不足 117 字节只占单个 RSA 块、服务端解得开；`runningRoute` 几 KB、要拼几十块，怀疑服务端按不同框架解不开 → 地图无轨迹 + 判异常。开关：关于页「跑步轨迹字段不加密（A/B）」→ `DeveloperPrefs.uploadRouteInPlaintext` → `RunningEncryption.encryptUploadPayload(payload, routeInPlaintext)`，只放开这一个值，键名与其它字段仍加密；结果页会带「（轨迹字段走明文）」标明这次测的是哪条臂。
 - **拒绝通知权限不再阻断跑步** —— 入口只强制要求定位权限；`POST_NOTIFICATIONS` 被拒仅影响前台服务通知可见性（`feature/running/ui/RunningHomeScreen.kt:73-88`）。
 
 ## 7. 相关文档

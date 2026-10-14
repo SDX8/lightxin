@@ -99,20 +99,44 @@ H5 的 `end()` 里 `isValid = parseFloat(basicInfo.mile) > .8`，与服务端下
 
 但**模拟器不是有效试验场**：Android 17 模拟器上 `adb emu geo fix` 返回 OK 却不再更新位置，须改用 `cmd location providers add-test-provider gps` + `set-test-provider-enabled true` + `set-test-provider-location gps --location <lat>,<lng>`；即便如此，经我们 3 s / 2 m 的采样过滤后，喂 420 个 3.5 m 步进的点只累计到 0.26 km、均速 1.2 km/h —— 本身已低于服务端 `minSpeed: 2`，结果无法归因。**结论：这条链路必须真机验证。** 测试会话已放弃，未向服务端上传任何数据。
 
-## 现场进展（同日更新）
+## 现场进展（2026-10-14）
 
-真机与 Android Studio 路线模拟器各跑了一次，服务端一律回 `remark = "运动轨迹异常，无效"`，**且详情页地图完全没有轨迹**。
+### 已排除的方向
 
-这两件事合起来才是关键：`RunDetail.initMap()` 是**无条件**执行的，跟 `state` 无关 —— 地图空白说明 `extraInfo.runningRoute` 在服务端就是空的，即**我们上传的路线压根没被存下来**，而不是"存下来但校验没过"。于是"运动轨迹异常"是"无轨迹可校验"的结果，不是原因。
+| 假设 | 证据 | 结论 |
+|---|---|---|
+| 日限额用尽 | 官方 App 回读 `remark = "运动轨迹异常，无效"` | 不是主因 |
+| 轨迹点缺时间戳 | H5 `initMap()` 只读 `longitude`/`latitude` | 官方也不带时间戳 |
+| 点太稀 / 速度越界 | `mile 1.02`、`speed 6.0–9.51`，全在服务端自己下发的 `2–15` 限值内 | 排除 |
+| 坐标系（WGS-84 vs BD-09） | 同一账号分别上传 BD-09 与原样 WGS-84，**两次都是 `state=0 / 运动轨迹异常`** | 排除 |
+| 轨迹没存下来 | 回读里 `runningRoute` 是**密文**，说明存下来了 | 排除（此前"地图空白=没存下"是我误判：H5 的 `initMap()` 不套视野，轨迹在 1.2 km 外就整条落在屏幕外） |
 
-据此排除的两个方向：
+### `/api` 上下文走不通，H5 的载荷形态不可照搬
 
-- **点太稀** —— 官方 H5 也不上传密集点，且这条无法解释"完全无轨迹"。
-- **坐标偏移出围栏** —— 偏移会导致"有轨迹但在圈外"，不会导致地图空白。
+H5 的大一大二上传是 `POST /api/mobile/sportApp/addExtractCheckRecord.do`，明文 JSON、字段 `extractCheckRecord`、轨迹字段复数 `runningRoutes`、成员标识是学号。
 
-剩下的头号嫌疑是**请求侧的轨迹字段名或值形态**：我们发的是 `runningRoute`（单数），而 H5 自己上传 `addExtractCheckRecord.do` 时用的是 `runningRoutes`（复数）；两者是不同接口，不能直接断定，但这是唯一能同时解释"记录建了 + 里程没入 + 轨迹为空 + 判异常"的假设。
+但 **`/api/*` 由 `in.aiit.edu.cn/uaac-server` 的 CAS 单点登录保护**（未登录直接 302 跳登录），而我们用的 `/mobile/*` 是另一个靠表单身份字段 + 多 header 鉴权的上下文。实测：
 
-为了不再靠猜，已实现回读链路：`RunningRepository.getRunRecord(checkId)` → `mobile/extra/getExtraCheck.do` → `RunRecordVerdict(state, remark, storedPointCount)`，结果页直接显示"服务端判定：…；已存轨迹 N 个点"。接口路径已探测存在（POST 返回 200，乱编路径返回 404）。
+```
+POST /mobile/sportApp/addExtractCheckRecord.do   → 404
+POST /api/sportApp/addExtractCheckRecord.do      → 302 → uaac-server/login
+POST /mobile/extra/addExtraCheckNew.do           → 200
+POST /mobile/extra/addExtraCheck.do              → 200（兄弟端点，我们从未调用）
+```
+
+`addExtractCheckRecord.do` 在 `/mobile` 下**不存在**，所以 H5 那套明文载荷形态不能直接搬到我们的端点上 —— 之前据此做的 A/B 臂已回退。要用它得先实现 sports `/api` 的 CAS 登录（项目里 `FifSessionManager` 有同类先例）。
+
+### 当前头号假设：分段 RSA 的框架不匹配
+
+```
+mile / speed / time  → 明文 <117 字节 → 单个 RSA 块 → 服务端解得开 → 记录里数值全对
+runningRoute         → 明文几 KB → 几十个 128 字节块拼成一个 Base64 串
+                     → 若服务端按不同的分块/编码约定解，结果就是垃圾
+```
+
+这能同时解释：与坐标系无关、与速度无关、真实跑与模拟跑都失败、`runningRoute` 存得下（存的就是我们给的密文）、但地图画不出来（解不开）、于是判"运动轨迹异常"。
+
+对应的 A/B 开关：关于页「跑步轨迹字段不加密」→ `DeveloperPrefs.uploadRouteInPlaintext` → `RunningEncryption.encryptUploadPayload(payload, routeInPlaintext = true)`，其余字段与全部键名照旧加密。
 
 ## 相关文档
 

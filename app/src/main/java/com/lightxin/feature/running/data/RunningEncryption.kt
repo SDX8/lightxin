@@ -24,7 +24,10 @@ data class RunningUploadPayload(
 @Singleton
 class RunningEncryption @Inject constructor() {
 
-    fun encryptUploadPayload(payload: RunningUploadPayload): String {
+    fun encryptUploadPayload(
+        payload: RunningUploadPayload,
+        routeInPlaintext: Boolean = false,
+    ): String {
         val routeArray = JSONArray()
         payload.runningRoute.forEach { point ->
             routeArray.put(
@@ -49,10 +52,12 @@ class RunningEncryption @Inject constructor() {
 
         val encryptedObject = JSONObject()
         plainValues.forEach { (key, value) ->
-            encryptedObject.put(
-                RSAUtils.encryptSportData(key),
-                RSAUtils.encryptSportData(value),
-            )
+            val encryptedValue = if (key == "runningRoute" && routeInPlaintext) {
+                value
+            } else {
+                RSAUtils.encryptSportData(value)
+            }
+            encryptedObject.put(RSAUtils.encryptSportData(key), encryptedValue)
         }
 
         return JSONArray().put(encryptedObject).toString()
