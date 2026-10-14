@@ -20,6 +20,7 @@ class DeveloperPrefs @Inject constructor(
 ) {
     companion object {
         private val KEY_ADVANCED_ENABLED = booleanPreferencesKey("advanced_enabled")
+        private val KEY_EXTRACT_RECORD_UPLOAD = booleanPreferencesKey("extract_record_upload")
     }
 
     val isAdvancedEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -29,6 +30,17 @@ class DeveloperPrefs @Inject constructor(
     suspend fun setAdvancedEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_ADVANCED_ENABLED] = enabled
+        }
+    }
+
+    /** 调试用：跑步上传改走官方 H5 的 addExtractCheckRecord.do 明文端点，用于 A/B 定位「运动轨迹异常」。 */
+    val extractRecordUploadEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_EXTRACT_RECORD_UPLOAD] == true
+    }
+
+    suspend fun setExtractRecordUploadEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_EXTRACT_RECORD_UPLOAD] = enabled
         }
     }
 }

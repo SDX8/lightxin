@@ -262,6 +262,8 @@ navigation 层把 running 明确拆成两套共享作用域：
 - **`result=OK` + 有效 id 不等于里程入账** —— 服务端可能建了记录却按规则判无效（实测：当日里程已达 `maxDayMile` 时贡献为 0）。结果页因此显示 `RunningResult.creditedKm`（上传前后 `dashboard.todayKm` 之差，`feature/running/ui/RunningViewModel.kt:130-135`），为 0 时明确提示"未计入"，不再只报"上传成功"。
 - **有效速度区间以服务端下发为准** —— `extraDetailInfo.do` 的 `minSpeed` / `maxSpeed` 经 `SportsGradeMapper` 解析进 `RunningDashboard.minSpeedKmh/maxSpeedKmh`，模拟提交校验与 `RunningSimScreen` 配色都读这一对值（`feature/running/ui/RunningViewModel.kt:303-321`）。2026-10-13 实测该账号下发的是 `2`–`15` km/h；服务端未下发时兜底 2–15。此前硬编码的 6–15 是客户端自己猜的，比服务端严。
 - **日限额 `maxDayMile` 当前不解析也不提示** —— 客户端不预判"今天再跑也不计里程"，提示依赖学校官方 App。要加预警时从同一份 `extraDetail` 取。
+- **上传端点有一条 A/B 备用臂** —— 官方 H5 里大一大二实际走 `mobile/sportApp/addExtractCheckRecord.do`（明文、字段 `extractCheckRecord`、轨迹字段复数 `runningRoutes`、成员标识是学号），与我们的 `mobile/extra/addExtraCheckNew.do`（RSA 双加密）不是同一个接口；H5 全程没有出现过后者。开关：关于页「跑步上传改走 H5 明文端点」（仅调试模式开启时可见）→ `DeveloperPrefs.extractRecordUploadEnabled` → `RunningRepository.uploadSnapshot()` 分流。用它是因为本仓库为 fork、无原始 HAR，原生实现无法核对。详见 `codestable/compound/2026-10-13-explore-sports-h5-protocol-evidence.md`。
+- **坐标系已 A/B 排除** —— 同一账号分别上传 BD-09 与原样 WGS-84，服务端都回 `state=0 / 运动轨迹异常`，且 `mile`/`speed` 均在其下发限值内、原始点都在校园框内。所以"服务端要 BD-09"只对 H5 的显示链路成立，不足以解释校验失败。
 - **拒绝通知权限不再阻断跑步** —— 入口只强制要求定位权限；`POST_NOTIFICATIONS` 被拒仅影响前台服务通知可见性（`feature/running/ui/RunningHomeScreen.kt:73-88`）。
 
 ## 7. 相关文档

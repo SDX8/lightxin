@@ -6,6 +6,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.location.CoordinateConverter
+import com.lightxin.core.settings.DeveloperPrefs
 import com.lightxin.feature.running.domain.GeneratedTrajectory
 import com.lightxin.feature.running.domain.GeoDistance
 import com.lightxin.feature.running.domain.RouteQualityChecker
@@ -23,6 +24,7 @@ import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
 import java.time.Instant
@@ -38,6 +40,7 @@ class RunningRepository @Inject constructor(
     private val api: RunningApi,
     private val tokenManager: TokenManager,
     private val encryption: RunningEncryption,
+    private val developerPrefs: DeveloperPrefs,
 ) {
 
     suspend fun getDashboard(): Result<RunningDashboard> {
@@ -282,7 +285,8 @@ class RunningRepository @Inject constructor(
             val durationSeconds = snapshot.durationSeconds.coerceAtLeast(1L)
             val speedKmh = distanceKm / durationSeconds * 3600.0
             // 逐点坐标转换 + 分段 RSA 加密都是 CPU 活，长轨迹下会卡主线程
-            val (route, encryptedList) = withContext(Dispatchers.Default) {
+            val useExtractEndpoint = developerPrefs.extractRecordUploadEnabled.first()
+            val (route, body) = withContext(Dispatchers.Default) {
                 val converted = if (snapshot.pointsAreBd09) {
                     snapshot.points
                 } else {
@@ -307,14 +311,28 @@ class RunningRepository @Inject constructor(
                     runningRoute = converted,
                     sourceInfo = Build.MODEL ?: "Android",
                 )
-                converted to encryption.encryptUploadPayload(payload)
+                converted to if (useExtractEndpoint) {
+                    encryption.buildExtractRecordPayload(payload, tokenManager.getUserCode().orEmpty())
+                } else {
+                    encryption.encryptUploadPayload(payload)
+                }
             }
-            val response = api.uploadRunningRecord(encryptedList)
+            val response = if (useExtractEndpoint) {
+                api.uploadExtractRecord(body)
+            } else {
+                api.uploadRunningRecord(body)
+            }
             val resultCode = response.lookupString("result")
             val uploadId = response.lookupString("id")
-            val success = resultCode.equals("OK", ignoreCase = true) && uploadId.isValidUploadId()
+            // addExtractCheckRecord.do 不返回记录 id（H5 只读 data.XN），只能按 flag 判定
+            val success = if (useExtractEndpoint) {
+                response.lookupBoolean("flag")
+            } else {
+                resultCode.equals("OK", ignoreCase = true) && uploadId.isValidUploadId()
+            }
+            val endpointTag = if (useExtractEndpoint) "，走 addExtractCheckRecord.do" else ""
             val message = when {
-                success -> "上传成功" + trajectoryWarning(snapshot.points)
+                success -> "上传成功$endpointTag" + trajectoryWarning(snapshot.points)
                 resultCode.equals("OK", ignoreCase = true) ->
                     "服务器未生成有效跑步记录（id=${uploadId.ifBlank { "空" }}），本次里程可能未入账"
                 else -> response.lookupString("msg", "result").ifBlank { "上传失败" }
