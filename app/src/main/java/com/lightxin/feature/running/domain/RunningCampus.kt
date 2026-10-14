@@ -4,12 +4,14 @@ import kotlin.math.cos
 
 object RunningCampus {
 
-    // 坐标系：内置环线顶点按 BD-09 对待（TrajectoryGenerator.generate 标 isBd09=true，上传时不再
-    // 转换）；模板录制拿到的是原生 GPS（WGS-84），上传前经 wgs84ToBd09 转换。
-    // 「服务端要 BD-09」已由官方 H5 证实：详情页用 BMap 绘制，并以 BMap.Convertor.translate(pts,1,5)
-    // 做 WGS-84→BD-09，见 codestable/compound/2026-10-13-explore-sports-h5-protocol-evidence.md §1。
-    // 但这组常量本身属于哪种坐标系仍无一手出处；RouteQualityChecker.inCampus 用同一组常量判真机
-    // 录制的 WGS-84 点，若普遍报「超出校园范围」，说明这里不是 BD-09。
+    // 坐标系：这组常量来自一份**未做 WGS-84→GCJ-02 转换**的真实户外 GPX，即它是 WGS-84。
+    // 因此 RouteQualityChecker 的围栏判定必须拿转换前的原始点来比（见 RunningRepository.trajectoryWarning），
+    // 否则会恒定报出约 1.2 km 的假越界 —— 那正是 WGS→BD 在本地的偏移量级。
+    //
+    // 未决：服务端到底要 WGS-84 还是 BD-09。官方 H5 用 BMap 画图、并用 Convertor.translate(1→5) 做
+    // WGS→BD，指向 BD-09；但真实跑步转换后仍被判「运动轨迹异常」，尚未排除服务端其实收原始坐标。
+    // 注意 TrajectoryGenerator.generate 目前把内置环线标成 isBd09=true（即不转换直接上传）——
+    // 若服务端要 BD-09，这个标记是错的；要 WGS-84 才是对的。A/B 结论出来前不要动它。
     const val CENTER_LATITUDE = 31.13893
     const val CENTER_LONGITUDE = 118.628131
 

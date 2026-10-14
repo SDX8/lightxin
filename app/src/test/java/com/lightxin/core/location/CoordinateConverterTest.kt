@@ -1,7 +1,10 @@
 package com.lightxin.core.location
 
 import com.lightxin.feature.running.domain.GeoDistance
+import com.lightxin.feature.running.domain.RouteQualityChecker
+import com.lightxin.feature.running.domain.RouteQualityStatus
 import com.lightxin.feature.running.domain.RunningCampus
+import com.lightxin.feature.running.domain.TrackPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -35,6 +38,24 @@ class CoordinateConverterTest {
         assertTrue("WGS→GCJ ${wgsToGcj.toInt()} m", wgsToGcj in 300.0..700.0)
         assertTrue("GCJ→BD ${gcjToBd.toInt()} m", gcjToBd in 400.0..1200.0)
         assertTrue("WGS→BD ${total.toInt()} m", total in 800.0..1400.0)
+    }
+
+    @Test
+    fun `conversion moves an on-campus loop out of the fence box, so the check must run pre-conversion`() {
+        val loop = List(40) { i ->
+            val angle = i * Math.PI / 20.0
+            RunningCampus.pointAt(200.0 * kotlin.math.sin(angle), 200.0 * kotlin.math.cos(angle))
+        }
+        val converted = loop.map {
+            val bd = CoordinateConverter.wgs84ToBd09(it.latitude, it.longitude)
+            TrackPoint(bd.latitude, bd.longitude)
+        }
+
+        assertEquals(RouteQualityStatus.PASS, RouteQualityChecker.evaluate(loop).status)
+        assertTrue(
+            "围栏检查若跑在转换之后，会恒定误报越界",
+            RouteQualityChecker.evaluate(converted).message?.contains("超出校园范围") == true,
+        )
     }
 
     @Test

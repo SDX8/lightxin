@@ -314,7 +314,7 @@ class RunningRepository @Inject constructor(
             val uploadId = response.lookupString("id")
             val success = resultCode.equals("OK", ignoreCase = true) && uploadId.isValidUploadId()
             val message = when {
-                success -> "上传成功" + trajectoryWarning(route)
+                success -> "上传成功" + trajectoryWarning(snapshot.points)
                 resultCode.equals("OK", ignoreCase = true) ->
                     "服务器未生成有效跑步记录（id=${uploadId.ifBlank { "空" }}），本次里程可能未入账"
                 else -> response.lookupString("msg", "result").ifBlank { "上传失败" }
@@ -346,21 +346,21 @@ class RunningRepository @Inject constructor(
 
     /**
      * 真实跑步此前不做任何轨迹质量检查（只有模板录制会查），白跑一场也不知道原因。
-     * 这里检查的是"已转成 BD-09、即将上传"的点集 —— 与围栏常量同一坐标系，才有意义。
-     * 出框时额外报出距校园中心的中位距离：几百米说明是坐标转换问题，几十公里说明中心常量本身错了。
+     *
+     * 必须检查**转换前的原始点**：`RunningCampus` 的常量来自一份未做 WGS-84→GCJ-02 转换的真实
+     * 户外 GPX，即它是 WGS-84；拿 BD-09 的点去比 WGS-84 的框，会恒定报出约 1.2 km 的假越界。
      */
-    private fun trajectoryWarning(route: List<TrackPoint>): String {
-        val quality = RouteQualityChecker.evaluate(route)
+    private fun trajectoryWarning(points: List<TrackPoint>): String {
+        val quality = RouteQualityChecker.evaluate(points)
         val reason = quality.message?.takeIf { it.isNotBlank() } ?: return ""
         if (quality.status == RouteQualityStatus.PASS) return ""
-        val distances = route.map {
+        val median = points.map {
             GeoDistance.metersBetween(
                 it.latitude, it.longitude,
                 RunningCampus.CENTER_LATITUDE, RunningCampus.CENTER_LONGITUDE,
             )
-        }.sorted()
-        val median = distances[distances.size / 2].toInt()
-        return "（注意：$reason；距校园中心中位 ${median} m）"
+        }.sorted()[points.size / 2].toInt()
+        return "（注意：$reason；原始轨迹距校园中心中位 ${median} m）"
     }
 
     private suspend fun sportsAuthParams(): Map<String, String> {
