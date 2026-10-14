@@ -2,10 +2,10 @@
 doc_type: architecture
 slug: aiclass-overview
 scope: feature/aiclass/ 的 AI 课堂模块：FIF 独立 SSO 会话、课程列表、当前学期课程补数、课程详情测验列表、课程作业列表与提交、数字码签到、ML Kit 扫码签到
-summary: aiclass 以独立 OkHttpClient + CookieJar 管理 FIF 平台登录态，SSO 自动续期，支持当前学期课程补数、课程详情测验列表、课程作业（爱作业平台桥接）、数字码签到和 ML Kit 扫码签到；扫码签到手动处理 302 跳转
+summary: aiclass 以独立 OkHttpClient + CookieJar 管理 FIF 平台登录态，SSO 自动续期，支持当前学期课程补数、课程详情测验列表、课程作业（爱作业平台桥接）、数字码签到和 ML Kit 扫码签到；扫码签到手动处理 302 跳转；启动时另跑一次会话体检，为首页「多端登录」横幅提供结论
 status: current
-last_reviewed: 2026-05-19
-tags: [aiclass, fif, sso, qrcode, mlkit, barcode, homework, izuoye]
+last_reviewed: 2026-10-14
+tags: [aiclass, fif, sso, qrcode, mlkit, barcode, homework, izuoye, session-probe]
 depends_on: [network-overview]
 ---
 
@@ -18,6 +18,7 @@ depends_on: [network-overview]
 - **数字码签到** — 教师公布 6 位数字签到码，学生在 App 中输入后提交
 - **扫码签到** — 用 CameraX + ML Kit BarcodeScanning 扫描二维码，解析 token 后调用 FIF 接口签到
 - **qrcodeHandler** — FIF 的扫码签到接口，返回 302 跳转（非 JSON），需手动跟随并解析 Location header 判断结果
+- **AiClassSessionGuard** — `feature/aiclass/data/AiClassSessionGuard`，启动时跑一次 SSO 作为会话体检，结论给首页横幅用
 
 ## 1. 定位与受众
 
@@ -41,6 +42,7 @@ depends_on: [network-overview]
 AiClassApi (data)                 → 9 个 FIF 接口（含测验列表 + 作业列表 + 作业桥接）
 IzuoyeApi (data)                  → 5 个爱作业平台接口（作业详情 / 提交列表 / 提交）
 AiClassRepository (data)          → SSO + 课程 + 测验列表 + 作业列表与提交 + 签到 + 扫码
+AiClassSessionGuard (data)        → 启动会话体检，结论供首页横幅消费
 AiClassViewModel (ui)             → 加载 + 签到触发 + 课程详情测验+作业并行加载
 AiClassHomeScreen (ui)            → 课程列表 + 签到卡片
 AiClassCourseDetailScreen (ui)    → 课程基础信息 + 测验列表 + 作业列表
@@ -161,6 +163,25 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 - 学生提交列表：先加载详情拿到 `cwDeadlineFormat`，再分页请求 `getStuWorkList`；页面使用 `LazyListState + derivedStateOf` 接近底部触发加载更多
 - 提交 BottomSheet：多行 TextField + 提交按钮
 
+### 2.10 启动体检与首页「多端登录」横幅
+
+锚点：`feature/aiclass/data/AiClassSessionGuard.kt:14-53`、`feature/home/ui/HomeViewModel.kt:128-132`、`feature/home/ui/HomeDashboard.kt:391-426`
+
+同一账号在官方 App 登录后，FIF 服务端的用户映射会被顶掉，表现为签到时服务端回 `FIF用户重映射失败`（该字符串来自服务端，仓库里没有）。本地之所以察觉不到：FIF token 与 `studentId` 持久化在 `fif_session` DataStore，SESSION Cookie 却只在内存，所以进程存活期间 `isSessionValid()` 恒为 true，`ensureSession()` 不会重新 SSO。
+
+`AiClassSessionGuard.checkOnLaunch()` 的处置方式是主动跑一次 `performSso()`：
+
+| 结论 | 触发条件 | 首页行为 |
+|---|---|---|
+| `Skipped` | DataStore 里没有 FIF token（从没进过 AI课堂） | 不提示 |
+| `Healthy` | SSO 三步全通 | 不提示，且会话已顺带续上 |
+| `Blocked` | SSO 明确失败（映射取不到 `data`、拿不到 302 Location） | 琥珀横幅「账号已在其他设备登录，AI课堂签到不可用」+「重新登录」 |
+| `NetworkIssue` | `IOException` / 协程超时 / 12s 无响应 | 不提示 |
+
+调用点在 `HomeViewModel` 的 init 与 `refresh()`，各自起独立协程，不阻塞 splash 放行也不占用下拉刷新动画。横幅按钮先弹二次确认（说明会挤下线官方 App、只想看课表可以取消），确认后才走 `HomeViewModel.relogin()`：`clearFifSession()` + `sessionManager.logout()` 后跳 `Routes.LOGIN`。
+
+`FifSessionManager.clear()` 会清 `fif_session` DataStore 与三个 fifedu 域（`sttp` / `aiitpass` / `izuoye`）的 Cookie —— 该 jar 按 host 整体覆盖，写空列表即为清空；「我的」页的退出登录也已接上同一调用。
+
 ## 3. 数据与状态
 
 ### 3.1 关键状态模型
@@ -192,6 +213,8 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 - **扫码用 ML Kit 而非 ZXing** —— Google 官方库，维护成本低，自带自动变焦。来源：`compound/2026-04-22-decision-ml-kit-barcode.md`。
 - **手动处理 302 跳转** —— FIF 接口返回重定向而非 JSON，App 需要手动跟随。来源：`AiClassRepository.kt:153-273`。
 - **SSO 失败后自动重试** —— `submitQrCode` 在检测到 `loginManage` 重定向时，强制刷新 SSO 后重试一次。来源：`AiClassRepository.kt:161-165`。
+- **启动体检只在 `Blocked` 时提示** —— `performSso()` 会把网络异常和超时统一包成普通 `Exception`，所以分类只能沿异常 cause 链找 `IOException` / `CancellationException`（`isProbeFailure`），绝不按 message 文本判断，否则断网会被说成「多端登录」。来源：`AiClassSessionGuard.kt:52-53`。
+- **体检直接复用 `performSso()` 而不是造只读探针** —— 映射接口在没有 SESSION Cookie 时的行为不可信，单独探一下反而拿不到结论；跑完整 SSO 既能判定又能顺手续期。代价是冷启动多三个请求。
 - **CameraX + PreviewView** —— 使用 Android Jetpack CameraX 库管理相机生命周期，避免直接操作 Camera2 API。
 
 ## 5. 代码锚点
@@ -200,6 +223,7 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 - `feature/aiclass/data/IzuoyeApi.kt` — 5 个爱作业平台接口
 - `feature/aiclass/data/IzuoyeResponse.kt` — 爱作业平台响应模型
 - `feature/aiclass/data/AiClassRepository.kt` — SSO + 课程 + 测验列表 + 作业 + 签到 + 扫码全流程
+- `feature/aiclass/data/AiClassSessionGuard.kt:14-53` — 启动会话体检与结论分类
 - `feature/aiclass/data/AiClassResponse.kt` — 响应模型（含测验列表 + 作业列表）
 - `feature/aiclass/domain/AiClassModels.kt` — AiCourse / AiQuiz / AiSignInInfo / AiWorkingRecord
 - `feature/aiclass/domain/AiHomeworkModels.kt` — AiHomework / AiHomeworkDetail / AiStudentWork
@@ -217,7 +241,7 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 - **扫码重试只做一次** —— 如果刷新 SSO 后仍然返回 `loginManage`，不会继续重试。来源：`AiClassRepository.kt:161-165`。
 - **扫码页不处理权限被永久拒绝** —— 如果用户拒绝相机权限，`CameraPermissionRequest` 调用 `onBack()` 返回。没有引导用户去设置页面开启权限。
 - **签到按钮禁用条件** —— `SignInCard` 的签到按钮在 `hasWorkingClass = false` 时禁用，但数字码输入框仍可输入。来源：`AiClassHomeScreen.kt:258`。
-- **FIF 会话状态不持久化** —— 进程重启后 CookieJar 丢失，需要重新 SSO。
+- **FIF 会话是半持久态** —— `fif_token` / `studentId` 存在 `fif_session` DataStore，SESSION Cookie 只在内存 jar 里。进程重启后 Cookie 丢失会触发重新 SSO；但进程活着时 `isSessionValid()` 恒为 true，服务端映射被别人顶掉后本地毫无察觉 —— 启动体检就是为补这个洞（§2.10）。
 - **测验列表依赖 token 里的 memberId** —— `paper/getPublishPaperListOfStudent` 需要 `userId`，当前实现通过解析 FIF token 的 JWT payload 取 `memberId`。若后端改 token 结构，需要同步更新 `FifSessionManager.kt`。
 - **课程补数依赖 schoolId + memberId** —— `timetableInfo` 同时要求 `schoolId` 和 `mid(memberId)`；任一缺失时当前实现会直接跳过补数，退回 `myClassroom` 单源列表。
 - **补进课程使用教学班 ID 进详情** —— 课表条目的原始 `courseId` 不是测验详情使用的那个 ID，若误用会导致课程详情页存在但测验为空。

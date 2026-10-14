@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.lightxin.core.auth.TokenManager
 import com.google.gson.JsonParser
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -118,6 +119,9 @@ class FifSessionManager @Inject constructor(
             saveIdentityCookies(userInfo.studentId, userInfo.userName)
 
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            // 超时/页面销毁不能伪装成「映射失败」，否则首页会误报多端登录
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception("AI课堂登录失败: ${e.message}", e))
         }
@@ -266,11 +270,16 @@ class FifSessionManager @Inject constructor(
         }.build().toString()
     }
 
+    /**
+     * 丢弃本地 FIF 会话。重新登录前必须调它：FIF token 持久化在 DataStore，
+     * 只清校内 token 会让下次 SSO 带着旧身份重来。
+     */
     suspend fun clear() {
         context.fifDataStore.edit { it.clear() }
-        // 清除 FIF 相关 Cookie
-        val fifUrl = ApiConstants.BASE_FIF.toHttpUrl()
-        cookieJar.loadForRequest(fifUrl) // 触发读取，无法直接清除，但会话失效后不影响
+        // FIF CookieJar 按 host 整体覆盖，写空列表即为清空
+        listOf(ApiConstants.BASE_FIF, ApiConstants.BASE_FIF_SSO, ApiConstants.BASE_IZUOYE).forEach { base ->
+            cookieJar.saveFromResponse(base.toHttpUrl(), emptyList())
+        }
     }
 
     private data class FifUserInfo(

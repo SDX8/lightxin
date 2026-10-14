@@ -26,9 +26,9 @@ Open the project in Android Studio when working on Compose previews, resources, 
 The project uses Kotlin official code style and 4-space indentation (`.idea/codeStyles/Project.xml`). Follow package-first organization and keep feature code split into `data`, `domain`, and `ui`. Use descriptive suffixes such as `Repository`, `ViewModel`, `Screen`, `Api`, and `Models`. Compose components use PascalCase function names, Kotlin files use PascalCase, and Android/XML resources use `snake_case` such as `network_security_config.xml`.
 
 ## Testing Guidelines
-JVM tests live in `app/src/test/java/com/lightxin/` and are already in place for the network, aiclass, running, schedule and update modules; `app/src/androidTest` does not exist yet. New work should add tests alongside the feature being changed — pure functions under `domain/` are the cheapest to cover.
+JVM tests live in `app/src/test/java/com/lightxin/` and are already in place for the network, aiclass, running, schedule and update modules. Instrumented tests live in `app/src/androidTest/java/com/lightxin/` — one file so far (`core/auth/RememberedLoginStoreInstrumentedTest.kt`), reserved for code that needs a real AndroidKeyStore. New work should add tests alongside the feature being changed — pure functions under `domain/` are the cheapest to cover.
 
-The test stack is JUnit 4 only (`junit:junit:4.13.2`); there is no Mockito or Robolectric. If a class exposes a method whose signature takes an Android type such as `android.location.Location`, unit tests must avoid that method or the test belongs in instrumentation instead. Name files `SomethingTest.kt` or `SomethingInstrumentedTest.kt`. At minimum, run `:app:testDebugUnitTest` (and `lint`) before opening a PR; use `connectedAndroidTest` for camera, navigation, or login flows that depend on Android runtime behavior.
+The JVM test stack is JUnit 4 only (`junit:junit:4.13.2`); there is no Mockito or Robolectric. Instrumented tests add nothing beyond `androidx.test.ext:junit` and `androidx.test:runner`. If a class exposes a method whose signature takes an Android type such as `android.location.Location`, unit tests must avoid that method or the test belongs in instrumentation instead. Name files `SomethingTest.kt` or `SomethingInstrumentedTest.kt`. At minimum, run `:app:testDebugUnitTest` (and `lint`) before opening a PR; use `connectedAndroidTest` for camera, navigation, or login flows that depend on Android runtime behavior — but read the data-wipe warning under 项目碎片知识 → 测试 first.
 
 ## Commit & Pull Request Guidelines
 This checkout **is** a git repository: `origin` is `https://github.com/SDX8/lightxin.git`, branch `main`. History before 2026-10-13 lives only on the remote (this directory was copied without its `.git`), so `git log` here starts from that date — do not assume older commits or files are available locally.
@@ -64,6 +64,8 @@ These constraints are non-negotiable. Changing any of them requires consulting t
 ### 测试
 - `:app:testDebugUnitTest` 只跑 debug 变体，是日常入口；`:app:test` 会把 release 变体一起跑。
 - 只有 JUnit 4，方法签名里带 `android.location.Location` 之类的 API 在纯 JVM 测试里要绕开（例：`RunningTrackerTest` 只覆盖不需要 Location 的状态机路径）。
+- **`:app:connectedDebugAndroidTest` 会先清空被测应用在设备上的数据再跑**（AGP 默认行为，2026-10-14 在模拟器上踩过：登录态、课表缓存、FIF 身份全没了，得重新登录）。别拿还想保持登录状态的设备当仪器化测试机，跑之前先确认丢了登录无所谓。
+- 仪器化测试目前只放真正依赖 Android 系统能力的东西（`RememberedLoginStoreInstrumentedTest` 验 AndroidKeyStore 加解密往返）。DataStore 是进程级单例，仪器化测试写的是应用真实偏好文件，测试自己要在 finally 里还原。
 
 ### 命令与脚本陷阱
 

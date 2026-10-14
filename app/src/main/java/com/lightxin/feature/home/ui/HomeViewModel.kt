@@ -1,9 +1,13 @@
 package com.lightxin.feature.home.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lightxin.core.auth.SessionManager
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.notification.CourseNotificationScheduler
+import com.lightxin.feature.aiclass.data.AiClassSessionCheck
+import com.lightxin.feature.aiclass.data.AiClassSessionGuard
 import com.lightxin.feature.checkin.data.CheckinRepository
 import com.lightxin.feature.checkin.domain.CheckinTask
 import com.lightxin.feature.holiday.data.HolidayRepository
@@ -32,6 +36,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
 
+private const val HOME_LOG_TAG = "HomeViewModel"
+
 data class HomeDashboardData(
     val todayCourses: List<Course> = emptyList(),
     val tomorrowFirstSection: Int? = null, // 明天第一节课的起始节次，null表示无课
@@ -49,6 +55,7 @@ data class HomeUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val errors: Map<String, String> = emptyMap(),
+    val aiClassBlocked: Boolean = false,
 )
 
 @HiltViewModel
@@ -61,6 +68,8 @@ class HomeViewModel @Inject constructor(
     private val laborRepository: LaborRepository,
     private val tokenManager: TokenManager,
     private val courseNotificationScheduler: CourseNotificationScheduler,
+    private val aiClassSessionGuard: AiClassSessionGuard,
+    private val sessionManager: SessionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -84,6 +93,8 @@ class HomeViewModel @Inject constructor(
         }
         // 自行加载 bootstrap 不覆盖的 running / labor
         viewModelScope.launch { loadExtras() }
+        // AI课堂会话体检：官方 App 登录后 FIF 服务端映射会被顶掉，本地 Cookie 却看不出来
+        viewModelScope.launch { checkAiClassSession() }
         // 启动课程倒计时通知调度
         courseNotificationScheduler.start(viewModelScope) {
             _uiState.value.dashboardData.todayCourses
@@ -100,6 +111,24 @@ class HomeViewModel @Inject constructor(
                 _uiState.update { it.copy(isRefreshing = false) }
             }
         }
+        // 探测最坏要等 12s 超时，不塞进下拉动画里
+        viewModelScope.launch { checkAiClassSession() }
+    }
+
+    /** 横幅上的「重新登录」：丢弃 FIF 与校内登录态，跳登录页由 UI 负责 */
+    fun relogin(onDone: () -> Unit) {
+        viewModelScope.launch {
+            aiClassSessionGuard.clearFifSession()
+            sessionManager.logout()
+            _uiState.update { it.copy(aiClassBlocked = false) }
+            onDone()
+        }
+    }
+
+    private suspend fun checkAiClassSession() {
+        val check = aiClassSessionGuard.checkOnLaunch()
+        Log.i(HOME_LOG_TAG, "AI课堂会话体检：$check")
+        _uiState.update { it.copy(aiClassBlocked = check == AiClassSessionCheck.Blocked) }
     }
 
     /** 应用进入后台：记录时间戳 */

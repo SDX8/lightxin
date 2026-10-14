@@ -86,4 +86,7 @@ dependencies {
     implementation(libs.zxing.core)
 
     testImplementation("junit:junit:4.13.2")
+    // AndroidKeyStore 相关代码只能在真机/模拟器上验证，见 RememberedLoginStoreInstrumentedTest
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }

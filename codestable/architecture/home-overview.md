@@ -151,6 +151,19 @@ depends_on: [network-overview, running-overview]
 
 这里要注意一个边界：分钟级重算只会重进 `buildSubtitle()`，不会自动递增 `subtitleRotation`；它负责“跨分钟导致场景变化”，不是“同桶随机轮换”。
 
+### 2.7 首页会顺带做一次 AI课堂会话体检
+
+锚点：`feature/home/ui/HomeViewModel.kt:128-132` / `feature/aiclass/data/AiClassSessionGuard.kt:28-44`
+
+`HomeViewModel` 在 init 与每次 `refresh()` 时各起一条独立协程调 `aiClassSessionGuard.checkOnLaunch()`，只有返回 `Blocked` 才把 `aiClassBlocked` 置真。
+
+两点刻意的设计：
+
+- **不并进 splash，也不并进下拉动画** —— 探测最坏要等 12s 超时，塞进 `loadAll()` 会让下拉圈一直转，塞进 `HomeBootstrap` 会推迟首帧。
+- **断网不报「多端登录」** —— `performSso()` 把 `IOException` 和超时都包成普通 `Exception`，所以结论只能靠异常类型链判断（`isProbeFailure`），不能靠 message 文本。
+
+横幅上的「重新登录」不直接执行：先弹 `LxDialog` 讲清代价（会把官方 App 挤下线，只想看课表可以「先不登录」），确认后才走 `HomeViewModel.relogin()`（`HomeViewModel.kt:119-126`）—— 清 FIF 身份 + 清校内 token，再 `navigate(Routes.LOGIN) { popUpTo(HOME) inclusive }`。因为登录页有「记住密码」（`core/auth/RememberedLoginStore`），重登基本是一次点击。
+
 ## 3. 数据与状态
 
 ### 3.1 关键状态模型
@@ -158,8 +171,8 @@ depends_on: [network-overview, running-overview]
 | 类型 | 含义 | 定义位置 |
 |---|---|---|
 | `HomeBootstrapSnapshot` | 冷启动一次性快照 | `feature/home/domain/HomeBootstrap.kt:123-130` |
-| `HomeDashboardData` | 首页聚合后的领域摘要 | `feature/home/ui/HomeViewModel.kt:32-39` |
-| `HomeUiState` | Compose 订阅的完整首页状态 | `feature/home/ui/HomeViewModel.kt:41-48` |
+| `HomeDashboardData` | 首页聚合后的领域摘要 | `feature/home/ui/HomeViewModel.kt:41-49` |
+| `HomeUiState` | Compose 订阅的完整首页状态（含 `aiClassBlocked`） | `feature/home/ui/HomeViewModel.kt:51-58` |
 | `HomeScene` | 场景判定结果枚举族 | `feature/home/domain/HomeScene.kt:12-33` |
 | `SubtitleContext` | 通用副标题挑选输入 | `feature/home/domain/SubtitleLibrary.kt:10-15` |
 
@@ -181,6 +194,8 @@ depends_on: [network-overview, running-overview]
 - 跑步：`RunningRepository`
 - 劳教：`LaborRepository`
 
+另有一条不属于摘要、只为体检存在的链路：`AiClassSessionGuard` → `FifSessionManager`（FIF 独立网络栈，详见 `aiclass-overview.md` §2.10）。
+
 锚点：`feature/home/ui/HomeViewModel.kt:51-58`。
 
 但它们并不在同一阶段进入页面：
@@ -199,12 +214,15 @@ depends_on: [network-overview, running-overview]
 - `GreetingSection`
 - `SectionRule`
 - `NextClassHeadline`
+- 条件渲染的 `AiClassBlockedBanner`（AI课堂会话被顶时排在卡片区首位）
 - `TodayCourseCard`
 - `RunningCard`
 - 条件渲染的 `CheckinCard`
 - 条件渲染的 `HolidayCard`
 
-锚点：`feature/home/ui/HomeDashboard.kt:114-200`。
+锚点：`feature/home/ui/HomeDashboard.kt:118-228`。
+
+卡片区用 `StaggeredCard(index = n)` 做入场错峰，横幅占 1 号后，课程卡 / 跑步卡 / 查寝卡 / 节假日卡依次顺延为 2/3/4/5；往这个 Column 里再插卡时要一起挪 index，否则入场顺序会错乱。
 
 当前代码已引入“场景”“副标题”“下一节 headline”的叙事层，但 UI 仍是“固定骨架 + 条件插卡”。设计稿预期为“无提醒时只保留问候语 / 有提醒时只出现一张智慧卡片”的完全状态机，当前尚未落成。
 
@@ -259,6 +277,7 @@ depends_on: [network-overview, running-overview]
 ## 5. 关键决策
 
 - **首页首屏只预取“基础信号”** —— 代码现实是 splash 阶段只取课表与查寝，不把跑步 / 劳教也塞进阻塞链。来源：`MainActivity.kt:35-43`、`feature/home/domain/HomeBootstrap.kt:54-68`。这条决定直接影响后续是否把新摘要数据加入 `HomeBootstrap`。
+- **AI课堂体检走独立协程，结论只认异常类型** —— 探测既不进 splash 也不进下拉动画，且只有「服务端拒绝映射」才提示，网络与超时一律沉默。来源：`feature/home/ui/HomeViewModel.kt:104-132`、`feature/aiclass/data/AiClassSessionGuard.kt:52-53`。
 - **首页叙事规则以课程节次表为准** —— 场景时间判断统一依赖 `SectionSchedule`，而不是零散写死在 UI。来源：`feature/home/domain/SceneResolver.kt:59-127`、`feature/home/domain/SectionSchedule.kt:13-35`。
 - **架构文档以代码现实为准，设计意图仅作对照输入保留** —— `homepage-design-spec.md` 预期”单智慧卡片状态机”，当前代码只落地了场景优先级、切换触发与部分动画约束。来源：`docs/项目规划/homepage-design-spec.md:81-99`、`docs/项目规划/homepage-design-spec.md:126-136`、`feature/home/ui/HomeDashboard.kt:114-200`。
 
@@ -270,13 +289,16 @@ depends_on: [network-overview, running-overview]
 - `feature/home/domain/SceneResolver.kt:41-127` — 场景优先级与时间规则
 - `feature/home/domain/SectionSchedule.kt:13-35` — 固定节次时刻表
 - `feature/home/domain/SubtitleLibrary.kt:32-175` — 通用副标题桶与场景文案
-- `feature/home/ui/HomeDashboard.kt:87-200` — 首页主渲染骨架
+- `feature/home/ui/HomeDashboard.kt:118-228` — 首页主渲染骨架
+- `feature/home/ui/HomeDashboard.kt:391-426` — AI课堂多端登录横幅
 - `feature/home/ui/HomeDashboard.kt:208-335` — 问候动画与下一节 headline
 - `feature/home/ui/HomeScreen.kt:51-146` — 三 tab 容器与“我的”页路由出口
 
 ## 7. 已知约束 / 边界情况
 
 - **劳教数据当前被加载但不在首页渲染** —— `HomeViewModel` 会把 `laborHours` 填进 `HomeDashboardData`，但 `HomeDashboard` 当前没有对应卡片。锚点：`feature/home/ui/HomeViewModel.kt:140-161` / `feature/home/ui/HomeDashboard.kt:167-200`。
+- **横幅上的「重新登录」是整站退出** —— 它会清掉 FIF 身份和校内 token 再跳登录页，不只是重连 AI课堂；点下去课表 / 查寝 / 跑步都要重新登录。这是有意为之（服务端映射被顶掉时校内态通常也已不可信），所以执行前有一道 `LxDialog` 二次确认，「先不登录」保持原状。改按钮语义前先想清楚这一点。锚点：`feature/home/ui/HomeViewModel.kt:119-126` / `feature/home/ui/HomeDashboard.kt:236-258`。
+- **启动探测会重跑一次 FIF SSO** —— 好处是顺带续上会话，代价是每次冷启动多三个请求；理论上也可能反向把官方 App 的 AI课堂会话顶掉，这一条尚未实测。锚点：`feature/aiclass/data/AiClassSessionGuard.kt:28-40`。
 - **主页“空态居中问候”尚未按设计稿落地** —— 当前无论有无场景，页面都仍保留分割线、headline、课程卡、跑步卡骨架。不要假设现有 UI 已具备设计稿中的双态布局。锚点：`docs/项目规划/homepage-design-spec.md:20-58` / `feature/home/ui/HomeDashboard.kt:114-200`。
 - **场景判定只依赖课程与查寝，不依赖跑步 / 劳教** —— 跑步与劳教会影响卡片区数据，但不会进入 `SceneResolver`。锚点：`feature/home/ui/HomeViewModel.kt:203-217` / `feature/home/domain/SceneResolver.kt:41-57`。
 - **分钟级 headline 当前不是实时钟驱动** —— `NextClassHeadline` 内部用 `remember { LocalTime.now() }` 取一次当前时刻，只有在组合重组时才更新；它不共享 `recomputeSubtitle()` 的每分钟 ticker 输入。锚点：`feature/home/ui/HomeDashboard.kt:282-285` / `feature/home/ui/HomeDashboard.kt:101-107`。
