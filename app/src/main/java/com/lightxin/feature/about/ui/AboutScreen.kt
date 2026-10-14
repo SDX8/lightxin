@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -40,13 +42,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lightxin.R
 import com.lightxin.core.designsystem.component.LxCard
 import com.lightxin.core.designsystem.component.LxDialog
-import com.lightxin.core.designsystem.component.LxDialogConfirmTone
+import com.lightxin.core.designsystem.component.LxTextField
 import com.lightxin.core.designsystem.component.LxTopBar
 import com.lightxin.core.designsystem.theme.LxCream
 import com.lightxin.core.designsystem.theme.LxInk
@@ -55,6 +60,7 @@ import com.lightxin.core.designsystem.theme.LxRose
 import com.lightxin.core.designsystem.theme.LxSand
 import com.lightxin.core.designsystem.theme.LxTerra
 import com.lightxin.core.designsystem.theme.NewsreaderDisplay
+import com.lightxin.core.settings.DeveloperPasscode
 
 @Composable
 fun AboutScreen(
@@ -63,7 +69,7 @@ fun AboutScreen(
     viewModel: AboutViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showConfirmDialog by remember { mutableStateOf(false) }
+    var showPasscodeDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -94,7 +100,7 @@ fun AboutScreen(
                         enabled = uiState.advancedEnabled,
                         onCheckedChange = { checked ->
                             if (checked && !uiState.advancedEnabled) {
-                                showConfirmDialog = true
+                                showPasscodeDialog = true
                             } else if (!checked) {
                                 viewModel.setAdvancedEnabled(false)
                             }
@@ -107,21 +113,69 @@ fun AboutScreen(
         }
     }
 
-    if (showConfirmDialog) {
-        LxDialog(
-            title = "启用调试功能",
-            message = "开启后将显示\"模拟提交\"与\"路线模拟\"入口。此类功能仅供开发调试，生成的数据为模拟结果，不代表真实跑步记录，请勿用于日常考核。",
-            confirmText = "确定",
-            dismissText = "取消",
-            onDismissRequest = { showConfirmDialog = false },
-            onDismiss = { showConfirmDialog = false },
-            onConfirm = {
-                showConfirmDialog = false
+    if (showPasscodeDialog) {
+        DeveloperPasscodeDialog(
+            onDismiss = { showPasscodeDialog = false },
+            onPassed = {
+                showPasscodeDialog = false
                 viewModel.setAdvancedEnabled(true)
             },
-            confirmTone = LxDialogConfirmTone.Destructive,
         )
     }
+}
+
+/**
+ * 开启调试入口前要先过口令，避免其他同学误开「模拟提交」。
+ * 校验本身只是客户端拦截，见 [DeveloperPasscode] 的说明。
+ */
+@Composable
+private fun DeveloperPasscodeDialog(
+    onDismiss: () -> Unit,
+    onPassed: () -> Unit,
+) {
+    var passcode by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val submit: () -> Unit = {
+        if (DeveloperPasscode.verify(passcode)) {
+            onPassed()
+        } else {
+            errorMessage = "密码不正确"
+        }
+    }
+
+    LxDialog(
+        title = "启用调试功能",
+        message = "开启后将显示\"模拟提交\"与\"路线模拟\"入口。此类功能仅供开发调试，生成的数据为模拟结果，不代表真实跑步记录，请勿用于日常考核。",
+        confirmText = "启用",
+        dismissText = "取消",
+        onDismissRequest = onDismiss,
+        onDismiss = onDismiss,
+        onConfirm = submit,
+        content = {
+            LxTextField(
+                value = passcode,
+                onValueChange = {
+                    passcode = it
+                    errorMessage = null
+                },
+                label = "调试密码",
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
+            )
+            errorMessage?.let {
+                Text(
+                    text = it,
+                    fontSize = 12.sp,
+                    color = LxRose,
+                )
+            }
+        },
+    )
 }
 
 @Composable
@@ -188,7 +242,7 @@ private fun DeveloperToggleRow(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "启用调试功能",
+            text = "启用调试功能（需密码）",
             fontSize = 15.sp,
             color = LxInk,
             modifier = Modifier.weight(1f),
