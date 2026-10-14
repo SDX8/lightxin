@@ -41,7 +41,7 @@ class CoordinateConverterTest {
     }
 
     @Test
-    fun `conversion moves an on-campus loop out of the fence box, so the check must run pre-conversion`() {
+    fun `a campus-centred loop leaves the fence box once converted, because the box is not BD-09`() {
         val loop = List(40) { i ->
             val angle = i * Math.PI / 20.0
             RunningCampus.pointAt(200.0 * kotlin.math.sin(angle), 200.0 * kotlin.math.cos(angle))
@@ -51,9 +51,10 @@ class CoordinateConverterTest {
             TrackPoint(bd.latitude, bd.longitude)
         }
 
+        // 说明 RunningCampus 的 ±600 m 框与 CENTER_* 是同一坐标系；任何拿 BD-09 点去比这个框的
+        // 判定都会恒定误报约 1.2 km 的"越界"。上传路径已不再做该检查，模板录制仍用原始点。
         assertEquals(RouteQualityStatus.PASS, RouteQualityChecker.evaluate(loop).status)
         assertTrue(
-            "围栏检查若跑在转换之后，会恒定误报越界",
             RouteQualityChecker.evaluate(converted).message?.contains("超出校园范围") == true,
         )
     }

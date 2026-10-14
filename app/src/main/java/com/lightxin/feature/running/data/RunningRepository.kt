@@ -6,12 +6,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.location.CoordinateConverter
-import com.lightxin.core.settings.DeveloperPrefs
 import com.lightxin.feature.running.domain.GeneratedTrajectory
-import com.lightxin.feature.running.domain.GeoDistance
-import com.lightxin.feature.running.domain.RouteQualityChecker
-import com.lightxin.feature.running.domain.RouteQualityStatus
-import com.lightxin.feature.running.domain.RunningCampus
 import com.lightxin.feature.running.domain.RunningDashboard
 import com.lightxin.feature.running.domain.RunningResult
 import com.lightxin.feature.running.domain.RunningSnapshot
@@ -24,7 +19,6 @@ import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
 import java.time.Instant
@@ -40,7 +34,6 @@ class RunningRepository @Inject constructor(
     private val api: RunningApi,
     private val tokenManager: TokenManager,
     private val encryption: RunningEncryption,
-    private val developerPrefs: DeveloperPrefs,
 ) {
 
     suspend fun getDashboard(): Result<RunningDashboard> {
@@ -285,7 +278,6 @@ class RunningRepository @Inject constructor(
             val durationSeconds = snapshot.durationSeconds.coerceAtLeast(1L)
             val speedKmh = distanceKm / durationSeconds * 3600.0
             // 逐点坐标转换 + 分段 RSA 加密都是 CPU 活，长轨迹下会卡主线程
-            val routeInPlaintext = developerPrefs.uploadRouteInPlaintext.first()
             val (route, encryptedList) = withContext(Dispatchers.Default) {
                 val converted = if (snapshot.pointsAreBd09) {
                     snapshot.points
@@ -311,15 +303,14 @@ class RunningRepository @Inject constructor(
                     runningRoute = converted,
                     sourceInfo = Build.MODEL ?: "Android",
                 )
-                converted to encryption.encryptUploadPayload(payload, routeInPlaintext)
+                converted to encryption.encryptUploadPayload(payload)
             }
             val response = api.uploadRunningRecord(encryptedList)
             val resultCode = response.lookupString("result")
             val uploadId = response.lookupString("id")
             val success = resultCode.equals("OK", ignoreCase = true) && uploadId.isValidUploadId()
-            val armTag = if (routeInPlaintext) "（轨迹字段走明文）" else ""
             val message = when {
-                success -> "上传成功$armTag" + trajectoryWarning(snapshot.points)
+                success -> "上传成功"
                 resultCode.equals("OK", ignoreCase = true) ->
                     "服务器未生成有效跑步记录（id=${uploadId.ifBlank { "空" }}），本次里程可能未入账"
                 else -> response.lookupString("msg", "result").ifBlank { "上传失败" }
@@ -347,25 +338,6 @@ class RunningRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "上传跑步记录失败", e))
         }
-    }
-
-    /**
-     * 真实跑步此前不做任何轨迹质量检查（只有模板录制会查），白跑一场也不知道原因。
-     *
-     * 必须检查**转换前的原始点**：`RunningCampus` 的常量来自一份未做 WGS-84→GCJ-02 转换的真实
-     * 户外 GPX，即它是 WGS-84；拿 BD-09 的点去比 WGS-84 的框，会恒定报出约 1.2 km 的假越界。
-     */
-    private fun trajectoryWarning(points: List<TrackPoint>): String {
-        val quality = RouteQualityChecker.evaluate(points)
-        val reason = quality.message?.takeIf { it.isNotBlank() } ?: return ""
-        if (quality.status == RouteQualityStatus.PASS) return ""
-        val median = points.map {
-            GeoDistance.metersBetween(
-                it.latitude, it.longitude,
-                RunningCampus.CENTER_LATITUDE, RunningCampus.CENTER_LONGITUDE,
-            )
-        }.sorted()[points.size / 2].toInt()
-        return "（注意：$reason；原始轨迹距校园中心中位 ${median} m）"
     }
 
     private suspend fun sportsAuthParams(): Map<String, String> {

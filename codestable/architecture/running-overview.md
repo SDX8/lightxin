@@ -246,13 +246,13 @@ navigation 层把 running 明确拆成两套共享作用域：
 - **上传失败保留会话** —— `uploadSnapshot()` 只在成功时 `completeSession()`；失败时轨迹和 `exerciseId` 留在 `RunningTracker` 里，回跑步页可重试（`feature/running/ui/RunningViewModel.kt:290-322`）。代价是服务端可能留下一个未完成的跑步会话，重试沿用同一个 `exerciseId`。
 - **结束时间锁定在 `stopCollecting()`** —— `RunningTrackerState.endTimeMillis` 一旦写入就不再随重试推移，失败后多等几分钟不会把配速算慢（`feature/running/service/RunningTracker.kt:99-118`）。锁定后 `onLocationUpdate()` 不再接受新点。
 - **模板保存有两级校验** —— `RouteTemplateRules` 负责硬拒绝，`RouteQualityChecker` 只给 WARNING，不直接拒绝（`feature/running/domain/RouteTemplate.kt:43-52` / `feature/running/domain/RouteQualityChecker.kt:23-56`）。
-- **上传前才做 WGS-84 -> BD-09 转换** —— 真实跑步采集阶段保留原生坐标；模拟轨迹是否已转换由 `GeneratedTrajectory.isBd09` 随数据一起带下来，仓库不再自行判断（`feature/running/data/RunningRepository.kt:263-274`）。「服务端期望 BD-09」已由官方 H5 用 `BMap` + `Convertor.translate(pts,1,5)` 证实，来源 `codestable/compound/2026-10-13-explore-sports-h5-protocol-evidence.md` §1；但 `RunningCampus` 常量本身属于哪种坐标系仍无一手出处。
-- **上传前对实际载荷做质量检查** —— `RunningRepository.trajectoryWarning()` 对**已转成 BD-09、即将上传**的点集跑 `RouteQualityChecker`，命中警告时把原因拼进结果文案（"上传成功（注意：…）"）。检查必须放在转换之后 —— 围栏常量与轨迹点不同坐标系时结果毫无意义。此前真实跑步完全不做质量检查，白跑一场也拿不到原因。
-- **模拟器不能用来验证跑步上传** —— Android 17 模拟器上 `adb emu geo fix` 返回 OK 却不再更新位置，需改用 `cmd location providers add-test-provider gps` + `set-test-provider-enabled true` + `set-test-provider-location`；即便如此，经 `locationUpdates(3000ms, 2m)` 过滤后喂 420 个 3.5 m 步进点只累计到 0.26 km、均速 1.2 km/h，低于服务端 `minSpeed: 2`，结果无法归因。这条链路必须真机验证。
+- **跑步加密要求字段名和值都加密，但 `runningRoute` 必须明文** —— 键名全加密、值除轨迹外全加密（`feature/running/data/RunningEncryption.kt`）。轨迹是唯一的长字段，几十段 RSA 块拼成的密文服务端解不开，会导致记录被判"运动轨迹异常，无效"。实测：同一份数据加密=无效、明文=有效 → [`decision-running-route-plaintext`](../compound/2026-10-14-decision-running-route-plaintext.md)
+- **服务端不做校园围栏校验** —— 轨迹明显不在校园内仍判有效。因此上传路径不做 `RouteQualityChecker`（此前加的检查只产出噪音，已移除）；模板录制仍做质量检查，那是本地体验。
+- **坐标系只影响轨迹画在哪，不影响有效性** —— 真实跑步仍做 WGS-84 → BD-09 转换（官方 H5 用 `BMap` + `Convertor.translate(1→5)`，显示侧确实是 BD-09）。但 `RunningCampus` 常量的出处仍存疑：公开资料显示该校在栖霞区仙林大学城（约 32.1°N），常量却是 31.13893°N，相差约 110 km，而真机操场数据只偏离它 1.4 km —— 矛盾未解，待确认。
+- 模拟器可以验证跑步上传，但有两个坑：Android 17 的 AVD 上 `adb emu geo fix` 返回 OK 却不再更新位置，要改用 `cmd location providers add-test-provider gps` + `set-test-provider-enabled gps true` + `set-test-provider-location gps --location <lat>,<lng>`；另外宿主机 `127.0.0.1:7897` 的系统代理会透明接管模拟器出口，把国内服务端的请求变成 HTML 503 / 超时，看起来像服务端挂了或代码有 bug。
 - **里程口径与官方 H5 不同** —— H5 是「相邻点 ≤3 m 不计里程但点一律保留」，我们是「<1.5 m 或 >120 m 的段连点一起丢」（`feature/running/service/RunningTracker.kt:66-77`）；且 H5 上传 GPS 瞬时速度，我们上传里程/时长平均速度。若服务端按官方口径校验点密度或速度一致性，这是第一个要回看的地方（来源同上 §4）。
 - **内置路线现在也走 `PolylineSampler`** —— 曾经直接取 8 个顶点，导致名义 40 m 步长、实际百米级跳变；改动后两条生成分支共享同一采样口径，且同一 `SimConfig` 结果可复现（`feature/running/domain/TrajectoryGenerator.kt:41-61`）。
 - **两个单 JSON 存储的落盘都是"写 tmp + rename 覆盖"** —— 不允许先 `delete` 再 `rename`：rename 失败时会连已有文件一起丢掉（`feature/running/data/RouteTemplateStore.kt:128-133` / `feature/schedule/data/ScheduleCacheStore.kt:109-118`）。rename 失败只清 tmp，保留旧文件。
-- **跑步加密要求字段名和值都加密** —— 不能只加密 JSON value（`feature/running/data/RunningEncryption.kt:37-58`）。
 - **repository 的 `catch` 一律先重抛 `CancellationException`** —— 否则 ViewModel 离开页面触发的取消会被当成业务失败继续写 UI state（`feature/running/data/RunningRepository.kt`，6 处）。
 - **`runningType` 当前按 `"1"` 处理** —— 代码与本地协议文档都按这一假设实现；若后续补抓发现跑团/补跑场景存在分支，这里要回看。来源：`docs/接口分析/跑步接口深度分析报告.md` §8.10。
 - **年级只读服务端 result** —— 不按学号、性别或本地规则推断年级；大一大二目标值只取服务端字段，`extraDetailInfo` 只能作为接口失败时的目标兜底来源。
@@ -262,8 +262,6 @@ navigation 层把 running 明确拆成两套共享作用域：
 - **`result=OK` + 有效 id 不等于里程入账** —— 服务端可能建了记录却按规则判无效（实测：当日里程已达 `maxDayMile` 时贡献为 0）。结果页因此显示 `RunningResult.creditedKm`（上传前后 `dashboard.todayKm` 之差，`feature/running/ui/RunningViewModel.kt:130-135`），为 0 时明确提示"未计入"，不再只报"上传成功"。
 - **有效速度区间以服务端下发为准** —— `extraDetailInfo.do` 的 `minSpeed` / `maxSpeed` 经 `SportsGradeMapper` 解析进 `RunningDashboard.minSpeedKmh/maxSpeedKmh`，模拟提交校验与 `RunningSimScreen` 配色都读这一对值（`feature/running/ui/RunningViewModel.kt:303-321`）。2026-10-13 实测该账号下发的是 `2`–`15` km/h；服务端未下发时兜底 2–15。此前硬编码的 6–15 是客户端自己猜的，比服务端严。
 - **日限额 `maxDayMile` 当前不解析也不提示** —— 客户端不预判"今天再跑也不计里程"，提示依赖学校官方 App。要加预警时从同一份 `extraDetail` 取。
-- **"运动轨迹异常"已排除坐标系与端点选择** —— 同一账号分别上传 BD-09 与原样 WGS-84，服务端都回 `state=0 / 运动轨迹异常`；`mile`/`speed` 都在其下发限值内；`runningRoute` 以密文形式存下了。官方 H5 那条明文上传（`addExtractCheckRecord.do`）在 `/api` 上下文、受 CAS 单点登录保护，我们的 `/mobile` 上下文里该路径是 404，不能照搬。完整排除过程见 `codestable/compound/2026-10-13-explore-sports-h5-protocol-evidence.md`。
-- **当前头号假设与 A/B 开关** —— 短字段（`mile`/`speed`/`time`）明文不足 117 字节只占单个 RSA 块、服务端解得开；`runningRoute` 几 KB、要拼几十块，怀疑服务端按不同框架解不开 → 地图无轨迹 + 判异常。开关：关于页「跑步轨迹字段不加密（A/B）」→ `DeveloperPrefs.uploadRouteInPlaintext` → `RunningEncryption.encryptUploadPayload(payload, routeInPlaintext)`，只放开这一个值，键名与其它字段仍加密；结果页会带「（轨迹字段走明文）」标明这次测的是哪条臂。
 - **拒绝通知权限不再阻断跑步** —— 入口只强制要求定位权限；`POST_NOTIFICATIONS` 被拒仅影响前台服务通知可见性（`feature/running/ui/RunningHomeScreen.kt:73-88`）。
 
 ## 7. 相关文档
