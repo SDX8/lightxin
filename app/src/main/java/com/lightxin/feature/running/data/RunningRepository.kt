@@ -7,8 +7,10 @@ import com.google.gson.JsonObject
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.location.CoordinateConverter
 import com.lightxin.feature.running.domain.GeneratedTrajectory
+import com.lightxin.feature.running.domain.GeoDistance
 import com.lightxin.feature.running.domain.RouteQualityChecker
 import com.lightxin.feature.running.domain.RouteQualityStatus
+import com.lightxin.feature.running.domain.RunningCampus
 import com.lightxin.feature.running.domain.RunningDashboard
 import com.lightxin.feature.running.domain.RunningResult
 import com.lightxin.feature.running.domain.RunningSnapshot
@@ -345,11 +347,20 @@ class RunningRepository @Inject constructor(
     /**
      * 真实跑步此前不做任何轨迹质量检查（只有模板录制会查），白跑一场也不知道原因。
      * 这里检查的是"已转成 BD-09、即将上传"的点集 —— 与围栏常量同一坐标系，才有意义。
+     * 出框时额外报出距校园中心的中位距离：几百米说明是坐标转换问题，几十公里说明中心常量本身错了。
      */
     private fun trajectoryWarning(route: List<TrackPoint>): String {
         val quality = RouteQualityChecker.evaluate(route)
         val reason = quality.message?.takeIf { it.isNotBlank() } ?: return ""
-        return if (quality.status == RouteQualityStatus.PASS) "" else "（注意：$reason）"
+        if (quality.status == RouteQualityStatus.PASS) return ""
+        val distances = route.map {
+            GeoDistance.metersBetween(
+                it.latitude, it.longitude,
+                RunningCampus.CENTER_LATITUDE, RunningCampus.CENTER_LONGITUDE,
+            )
+        }.sorted()
+        val median = distances[distances.size / 2].toInt()
+        return "（注意：$reason；距校园中心中位 ${median} m）"
     }
 
     private suspend fun sportsAuthParams(): Map<String, String> {

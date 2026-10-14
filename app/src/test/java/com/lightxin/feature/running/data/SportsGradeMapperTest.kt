@@ -97,45 +97,48 @@ class SportsGradeMapperTest {
     }
 
     @Test
-    fun `parseCheckRecord reads verdict and counts a string-encoded route`() {
+    fun `parseCheckRecord reads the verdict from a real getExtraCheck response`() {
+        // 2026-10-14 实测：runningRoute 由服务端加密存储，回读拿到的是密文
         val verdict = requireNotNull(
             SportsGradeMapper.parseCheckRecord(
                 json(
-                    """{"data":{"extraInfo":{"checkId":"6902bd","state":"0","remark":"运动轨迹异常，无效",""" +
-                        """"runningRoute":"[{\"latitude\":\"31.13\",\"longitude\":\"118.62\"},""" +
-                        """{\"latitude\":\"31.14\",\"longitude\":\"118.63\"}]"}}}""",
+                    """{"flag":true,"result":"success","rows":null,"total":null,"data":{"applyInfo":null,""" +
+                        """"extraInfo":{"checkId":"f5fb74df0422448ea7639c5432339125","mile":"1.02",""" +
+                        """"time":"00:06:26","speed":"9.51","state":"0","remark":"运动轨迹异常，无效",""" +
+                        """"runningRoute":"CnlTehTkkCjHiKnQHTXpm3+pNRyGJDtohT6DZHJVjv6r4f8="}}}""",
                 ),
             ),
         )
 
-        assertEquals("6902bd", verdict.checkId)
-        assertEquals(2, verdict.storedPointCount)
+        assertEquals("f5fb74df0422448ea7639c5432339125", verdict.checkId)
         assertFalse(verdict.isValid)
         assertEquals("无效：运动轨迹异常，无效", verdict.describe())
+        assertTrue(verdict.hasStoredRoute)
     }
 
     @Test
-    fun `parseCheckRecord accepts a route already delivered as an array`() {
+    fun `parseCheckRecord treats a route array as stored without throwing`() {
         val verdict = requireNotNull(
             SportsGradeMapper.parseCheckRecord(
                 json("""{"data":{"extraInfo":{"state":"1","runningRoute":[{"latitude":31.1,"longitude":118.6}]}}}"""),
             ),
         )
 
-        assertEquals(1, verdict.storedPointCount)
         assertTrue(verdict.isValid)
-        assertEquals("有效", verdict.describe())
+        assertTrue(verdict.hasStoredRoute)
     }
 
     @Test
-    fun `parseCheckRecord reports zero points when the server stored no route`() {
-        val verdict = requireNotNull(
-            SportsGradeMapper.parseCheckRecord(
-                json("""{"data":{"extraInfo":{"state":"0","runningRoute":""}}}"""),
-            ),
-        )
-
-        assertEquals(0, verdict.storedPointCount)
+    fun `parseCheckRecord reports no stored route when the field is blank, empty or absent`() {
+        listOf(
+            """{"data":{"extraInfo":{"state":"0","runningRoute":""}}}""",
+            """{"data":{"extraInfo":{"state":"0","runningRoute":[]}}}""",
+            """{"data":{"extraInfo":{"state":"0","runningRoute":null}}}""",
+            """{"data":{"extraInfo":{"state":"0"}}}""",
+        ).forEach { raw ->
+            val verdict = requireNotNull(SportsGradeMapper.parseCheckRecord(json(raw)))
+            assertFalse(verdict.hasStoredRoute)
+        }
     }
 
     @Test
@@ -148,12 +151,12 @@ class SportsGradeMapperTest {
     fun `parseCheckRecord also reads extraInfo at the response top level`() {
         val verdict = requireNotNull(
             SportsGradeMapper.parseCheckRecord(
-                json("""{"extraInfo":{"state":"1","runningRoute":[{"latitude":31.1,"longitude":118.6}]}}"""),
+                json("""{"extraInfo":{"state":"1","runningRoute":"CnlTehTkkCjHiKnQ=="}}"""),
             ),
         )
 
         assertTrue(verdict.isValid)
-        assertEquals(1, verdict.storedPointCount)
+        assertTrue(verdict.hasStoredRoute)
     }
 
     @Test

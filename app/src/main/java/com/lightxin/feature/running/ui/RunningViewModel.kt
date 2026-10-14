@@ -344,8 +344,9 @@ class RunningViewModel @Inject constructor(
         val creditedKm = refreshAndComputeCreditedKm(beforeTodayKm)
         val verdict = base.uploadId.takeIf { it.isNotBlank() }
             ?.let { repository.getRunRecord(it).getOrNull() }
-        val suffix = verdict?.let { "（服务端判定：${it.describe()}；已存轨迹 ${it.storedPointCount} 个点）" }
-            .orEmpty()
+        val suffix = verdict?.let {
+            "（服务端判定：${it.describe()}；轨迹已存：${if (it.hasStoredRoute) "是" else "否"}）"
+        }.orEmpty()
         return base.copy(creditedKm = creditedKm, message = base.message + suffix)
     }
 

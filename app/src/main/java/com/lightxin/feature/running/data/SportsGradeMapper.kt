@@ -2,7 +2,6 @@ package com.lightxin.feature.running.data
 
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
-import com.google.gson.JsonParser
 import com.lightxin.feature.running.domain.ClubSummary
 import com.lightxin.feature.running.domain.RunRecordVerdict
 
@@ -68,17 +67,16 @@ object SportsGradeMapper {
             checkId = extra.string("checkId"),
             state = extra.string("state"),
             remark = extra.string("remark"),
-            storedPointCount = routePointCount(extra.get("runningRoute")),
+            // 实测 runningRoute 是密文（服务端加密存储），只能判断有没有存
+            hasStoredRoute = hasRouteValue(extra.get("runningRoute")),
         )
     }
 
-    /** runningRoute 既可能以 JSON 字符串下发，也可能已经是数组。 */
-    private fun routePointCount(element: JsonElement?): Int {
-        element ?: return 0
-        if (element.isJsonArray) return element.asJsonArray.size()
-        val raw = runCatching { element.asString }.getOrNull().orEmpty()
-        if (raw.isBlank()) return 0
-        return runCatching { JsonParser.parseString(raw).asJsonArray.size() }.getOrDefault(0)
+    /** runningRoute 实测为密文字符串，但也可能以数组或缺失出现，任何一种都不能抛。 */
+    private fun hasRouteValue(element: JsonElement?): Boolean = when {
+        element == null || element.isJsonNull -> false
+        element.isJsonArray -> element.asJsonArray.size() > 0
+        else -> runCatching { element.asString }.getOrNull()?.isNotBlank() == true
     }
 
     /** 解析 index/clubInfo.do → ClubSummary；大三/大四 clubInfo 为 null 时返回 null。 */

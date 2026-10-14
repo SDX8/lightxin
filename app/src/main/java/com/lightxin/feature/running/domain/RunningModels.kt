@@ -63,13 +63,13 @@ data class RunningSnapshot(
 
 /**
  * 服务端对一条跑步记录的判定回读。`state == "1"` 为有效，`"0"` / `"2"` 为无效，
- * 原因在 `remark`；`storedPointCount` 为 0 说明服务端没存下我们上传的轨迹。
+ * 原因在 `remark`。`runningRoute` 在服务端是加密存储的，所以只能判断有没有存下。
  */
 data class RunRecordVerdict(
     val checkId: String,
     val state: String,
     val remark: String,
-    val storedPointCount: Int,
+    val hasStoredRoute: Boolean,
 ) {
     val isValid: Boolean get() = state == "1"
 
