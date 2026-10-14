@@ -4,16 +4,14 @@ import kotlin.math.cos
 
 object RunningCampus {
 
-    // 坐标系：这组常量来自一份**未做 WGS-84→GCJ-02 转换**的真实户外 GPX，即它是 WGS-84。
-    // 因此 RouteQualityChecker 的围栏判定必须拿转换前的原始点来比（见 RunningRepository.trajectoryWarning），
-    // 否则会恒定报出约 1.2 km 的假越界 —— 那正是 WGS→BD 在本地的偏移量级。
+    // 校园中心：2026-10-14 由用户提供，替换掉来源不明的 31.13893 / 118.628131（两点相距约 620 m）。
     //
-    // 未决：服务端到底要 WGS-84 还是 BD-09。官方 H5 用 BMap 画图、并用 Convertor.translate(1→5) 做
-    // WGS→BD，指向 BD-09；但真实跑步转换后仍被判「运动轨迹异常」，尚未排除服务端其实收原始坐标。
-    // 注意 TrajectoryGenerator.generate 目前把内置环线标成 isBd09=true（即不转换直接上传）——
-    // 若服务端要 BD-09，这个标记是错的；要 WGS-84 才是对的。A/B 结论出来前不要动它。
-    const val CENTER_LATITUDE = 31.13893
-    const val CENTER_LONGITUDE = 118.628131
+    // 坐标系归属仍未确认，但影响面已经很小：服务端不做校园围栏校验（轨迹在校外仍判有效），
+    // 所以这组常量只决定内置模拟环线画在哪、以及模板质量检查的框，不影响记录能否入账。
+    // 服务端「显示侧」是 BD-09 这点由官方 H5 证实（BMap + Convertor.translate(pts,1,5)），
+    // 见 codestable/compound/2026-10-13-explore-sports-h5-protocol-evidence.md §1。
+    const val CENTER_LATITUDE = 31.134154
+    const val CENTER_LONGITUDE = 118.631502
 
     private const val METERS_PER_LAT_DEGREE = 111_320.0
     private const val CAMPUS_HALF_HEIGHT_METERS = 600.0
