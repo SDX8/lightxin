@@ -99,40 +99,20 @@ H5 的 `end()` 里 `isValid = parseFloat(basicInfo.mile) > .8`，与服务端下
 
 但**模拟器不是有效试验场**：Android 17 模拟器上 `adb emu geo fix` 返回 OK 却不再更新位置，须改用 `cmd location providers add-test-provider gps` + `set-test-provider-enabled true` + `set-test-provider-location gps --location <lat>,<lng>`；即便如此，经我们 3 s / 2 m 的采样过滤后，喂 420 个 3.5 m 步进的点只累计到 0.26 km、均速 1.2 km/h —— 本身已低于服务端 `minSpeed: 2`，结果无法归因。**结论：这条链路必须真机验证。** 测试会话已放弃，未向服务端上传任何数据。
 
-## 现场进展（2026-10-14 更新）
+## 现场进展（同日更新）
 
-### 坐标系已被 A/B 排除
+真机与 Android Studio 路线模拟器各跑了一次，服务端一律回 `remark = "运动轨迹异常，无效"`，**且详情页地图完全没有轨迹**。
 
-同一账号、同一条内置校园环线，分别以两种坐标系上传：
+这两件事合起来才是关键：`RunDetail.initMap()` 是**无条件**执行的，跟 `state` 无关 —— 地图空白说明 `extraInfo.runningRoute` 在服务端就是空的，即**我们上传的路线压根没被存下来**，而不是"存下来但校验没过"。于是"运动轨迹异常"是"无轨迹可校验"的结果，不是原因。
 
-| 上传内容 | 结果 |
-|---|---|
-| 真实跑步：GPS 原始 WGS-84 → `wgs84ToBd09` → BD-09 | `state=0`，`运动轨迹异常，无效` |
-| 模拟提交（内置环线，标 `isBd09=true`，原样上传 WGS-84） | `state=0`，`运动轨迹异常，无效` |
+据此排除的两个方向：
 
-两次都：记录建成、返回有效 id、`runningRoute` 存下了密文、`mile`/`speed`/`time` 全在服务端自己下发的限值内、原始点都在校园框内。
+- **点太稀** —— 官方 H5 也不上传密集点，且这条无法解释"完全无轨迹"。
+- **坐标偏移出围栏** —— 偏移会导致"有轨迹但在圈外"，不会导致地图空白。
 
-**所以 §1 的「服务端要 BD-09」虽然对 H5 的显示链路成立，但不足以解释服务端校验；坐标系不是根因，已排除。**
+剩下的头号嫌疑是**请求侧的轨迹字段名或值形态**：我们发的是 `runningRoute`（单数），而 H5 自己上传 `addExtractCheckRecord.do` 时用的是 `runningRoutes`（复数）；两者是不同接口，不能直接断定，但这是唯一能同时解释"记录建了 + 里程没入 + 轨迹为空 + 判异常"的假设。
 
-### 剩下的分歧：端点本身就不一样
-
-官方 H5 里大一大二实际走的上传，与我们走的不是同一个接口：
-
-| | 官方 H5 | 我们 |
-|---|---|---|
-| 接口 | `mobile/sportApp/addExtractCheckRecord.do` | `mobile/extra/addExtraCheckNew.do` |
-| 表单字段 | `extractCheckRecord` | `list` |
-| 载荷 | 明文 JSON | RSA 双加密 |
-| 成员标识 | `extraMemberId`（值是学号） | `memberId`（UUID） |
-| 轨迹字段 | `runningRoutes`（复数，值为数字） | `runningRoute`（单数，值为字符串） |
-
-`addExtraCheckNew.do` 在整个 H5 里**一次都没出现过**，只能来自原生 App 的抓包；而本仓库是 fork 来的、没有原始 HAR，无法核对原生实现。
-
-### 为此加的 A/B 开关
-
-`DeveloperPrefs.extractRecordUploadEnabled`（关于页 → 开启调试功能后才出现「跑步上传改走 H5 明文端点」）。打开后 `RunningRepository.uploadSnapshot()` 改走 `addExtractCheckRecord.do` + `RunningEncryption.buildExtractRecordPayload()` 的明文载荷，结果页文案会带上「走 addExtractCheckRecord.do」以标明这次测的是哪条臂。
-
-额外好处：这条端点是**明文**的，debug 包的 BODY 日志能直接看到我们发出的完整载荷 —— RSA 那条永远看不到。
+为了不再靠猜，已实现回读链路：`RunningRepository.getRunRecord(checkId)` → `mobile/extra/getExtraCheck.do` → `RunRecordVerdict(state, remark, storedPointCount)`，结果页直接显示"服务端判定：…；已存轨迹 N 个点"。接口路径已探测存在（POST 返回 200，乱编路径返回 404）。
 
 ## 相关文档
 

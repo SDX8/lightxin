@@ -19,7 +19,6 @@ import javax.inject.Inject
 data class AboutUiState(
     val versionName: String = "",
     val advancedEnabled: Boolean = false,
-    val extractRecordUploadEnabled: Boolean = false,
     val updateCheckState: UpdateCheckState = UpdateCheckState.Idle,
 )
 
@@ -48,23 +47,12 @@ class AboutViewModel @Inject constructor(
                 _uiState.update { it.copy(advancedEnabled = enabled) }
             }
         }
-        viewModelScope.launch {
-            developerPrefs.extractRecordUploadEnabled.collectLatest { enabled ->
-                _uiState.update { it.copy(extractRecordUploadEnabled = enabled) }
-            }
-        }
         viewModelScope.launch { apkDownloader.checkPendingDownload() }
     }
 
     fun setAdvancedEnabled(enabled: Boolean) {
         viewModelScope.launch {
             developerPrefs.setAdvancedEnabled(enabled)
-        }
-    }
-
-    fun setExtractRecordUploadEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            developerPrefs.setExtractRecordUploadEnabled(enabled)
         }
     }
 

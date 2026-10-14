@@ -58,37 +58,6 @@ class RunningEncryption @Inject constructor() {
         return JSONArray().put(encryptedObject).toString()
     }
 
-    /**
-     * 官方 H5 的上传载荷：不加密，字段名与类型都和 RSA 那条不同 —— 轨迹字段是复数
-     * `runningRoutes`，成员标识是学号而不是 memberId，经纬度/里程/速度是数字而不是字符串。
-     */
-    fun buildExtractRecordPayload(payload: RunningUploadPayload, studentCode: String): String {
-        val route = JSONArray()
-        payload.runningRoute.forEach { point ->
-            route.put(
-                JSONObject()
-                    .put("longitude", round(point.longitude, 6))
-                    .put("latitude", round(point.latitude, 6)),
-            )
-        }
-
-        return JSONObject()
-            .put("extraMemberId", studentCode)
-            .put("startDate", payload.startDate)
-            .put("endDate", payload.endDate)
-            .put("mile", round(payload.mileKm, 2))
-            .put("speed", round(payload.speedKmh, 2))
-            .put("time", payload.timeSeconds)
-            .put("runningRoutes", route)
-            .toString()
-    }
-
-    private fun round(value: Double, decimals: Int): Double {
-        var factor = 1.0
-        repeat(decimals) { factor *= 10.0 }
-        return Math.round(value * factor) / factor
-    }
-
     private fun formatDecimal(value: Double): String =
         String.format(Locale.US, "%.2f", value)
 

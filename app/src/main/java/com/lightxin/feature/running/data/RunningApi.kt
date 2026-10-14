@@ -84,16 +84,6 @@ interface RunningApi {
     suspend fun uploadRunningRecord(
         @Field("list") list: String,
     ): JsonObject
-
-    /**
-     * 官方 H5 里大一大二实际走的上传端点：明文 JSON、字段名 `extractCheckRecord`、
-     * 轨迹字段是复数 `runningRoutes`。仅用于与 `addExtraCheckNew.do` 做 A/B 验证。
-     */
-    @FormUrlEncoded
-    @POST("mobile/sportApp/addExtractCheckRecord.do")
-    suspend fun uploadExtractRecord(
-        @Field("extractCheckRecord") record: String,
-    ): JsonObject
 }
 
 @Module

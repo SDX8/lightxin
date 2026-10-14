@@ -90,8 +90,7 @@ fun AboutScreen(
                         onDownload = { viewModel.downloadUpdate() },
                     )
                     CardDivider()
-                    DebugSwitchRow(
-                        title = "启用调试功能",
+                    DeveloperToggleRow(
                         enabled = uiState.advancedEnabled,
                         onCheckedChange = { checked ->
                             if (checked && !uiState.advancedEnabled) {
@@ -101,14 +100,6 @@ fun AboutScreen(
                             }
                         },
                     )
-                    if (uiState.advancedEnabled) {
-                        CardDivider()
-                        DebugSwitchRow(
-                            title = "跑步上传改走 H5 明文端点",
-                            enabled = uiState.extractRecordUploadEnabled,
-                            onCheckedChange = viewModel::setExtractRecordUploadEnabled,
-                        )
-                    }
                     CardDivider()
                     GitHubRow()
                 }
@@ -185,8 +176,7 @@ private fun BrandCard(versionName: String) {
 }
 
 @Composable
-private fun DebugSwitchRow(
-    title: String,
+private fun DeveloperToggleRow(
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
@@ -198,7 +188,7 @@ private fun DebugSwitchRow(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = title,
+            text = "启用调试功能",
             fontSize = 15.sp,
             color = LxInk,
             modifier = Modifier.weight(1f),
