@@ -264,9 +264,12 @@ class RunningViewModel @Inject constructor(
                         shouldNavigateToResult = true,
                     )
                 }
-                // 先带结果跳转，再异步补"实际计入里程"与"服务端判定"，避免用户多等一个网络往返
-                val finalResult = buildFinalResult(effective, beforeTodayKm)
-                _uiState.update { it.copy(lastResult = finalResult) }
+                // 同上：跳转后调用方的 scope 会被取消，收尾走 viewModelScope
+                viewModelScope.launch {
+                    _uiState.update {
+                        it.copy(lastResult = buildFinalResult(effective, beforeTodayKm))
+                    }
+                }
             },
             onFailure = { error ->
                 val failureResult = buildFailedResult(
@@ -360,9 +363,11 @@ class RunningViewModel @Inject constructor(
                         shouldNavigateToResult = true,
                     )
                 }
-                // 先带结果跳转，再异步补"实际计入里程"与"服务端判定"
-                val finalResult = buildFinalResult(result, beforeTodayKm)
-                _uiState.update { it.copy(lastResult = finalResult) }
+                // 跳转后调用方的 rememberCoroutineScope 会随界面销毁而取消，
+                // 收尾必须挂到 viewModelScope，否则回读请求会被 Canceled
+                viewModelScope.launch {
+                    _uiState.update { it.copy(lastResult = buildFinalResult(result, beforeTodayKm)) }
+                }
             },
             onFailure = { error ->
                 // 不 clear session：轨迹与 exerciseId 要留着，回跑步页还能重试上传
