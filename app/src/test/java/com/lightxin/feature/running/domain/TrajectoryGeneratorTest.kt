@@ -55,8 +55,8 @@ class TrajectoryGeneratorTest {
     }
 
     @Test
-    fun `builtin route claims bd09 while a recorded template claims wgs84`() {
-        assertTrue(TrajectoryGenerator.generate(config).isBd09)
+    fun `both trajectory sources are wgs84 and need the upload conversion`() {
+        assertFalse(TrajectoryGenerator.generate(config).isBd09)
         assertFalse(TrajectoryGenerator.generateFromTemplate(config, template(loopPoints())).isBd09)
     }
 

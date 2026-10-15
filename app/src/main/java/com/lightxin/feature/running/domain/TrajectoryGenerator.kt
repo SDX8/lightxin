@@ -37,10 +37,13 @@ object TrajectoryGenerator {
         ),
     )
 
-    /** 内置校园环线。这些顶点按 BD-09 采集，见 [RunningCampus] 的坐标系说明。 */
+    /**
+     * 内置校园环线。顶点取自 GPX / 谷歌地球，即 WGS-84，和手机原始定位同源，
+     * 所以同样要在上传前转成 BD-09 —— 见 [RunningCampus] 的坐标系说明。
+     */
     fun generate(config: SimConfig): GeneratedTrajectory = GeneratedTrajectory(
         points = sampleClosedLoop(campusRoutes.random(Random(config.startTimeMillis)), config),
-        isBd09 = true,
+        isBd09 = false,
     )
 
     /** 用户录制的模板来自原生 GPS，即 WGS-84，上传前需要转换。 */

@@ -127,11 +127,11 @@ depends_on: [network-overview]
 - 若无默认模板，或模板采样结果不足 2 个点，则退回 `TrajectoryGenerator.generate(config)` 的内置校园路线
 - 最终都交给 `repository.submitSimulation(config, overrideTrajectory)`，由它先 `startRunning()` 取 `exerciseId`，再构造 `RunningSnapshot` 并复用统一上传链路
 
-锚点：`feature/running/ui/RunningViewModel.kt:214-270` / `feature/running/ui/RunningSimScreen.kt:79-123,126-220,231-231` / `feature/running/data/RunningRepository.kt:230-252` / `feature/running/domain/TrajectoryGenerator.kt:41-61`。
+锚点：`feature/running/ui/RunningViewModel.kt:214-270` / `feature/running/ui/RunningSimScreen.kt:79-123,126-220,231-231` / `feature/running/data/RunningRepository.kt:230-252` / `feature/running/domain/TrajectoryGenerator.kt:40-65`。
 
 **两条生成分支现在走同一个采样器**。`TrajectoryGenerator` 的内置环线和用户模板都经 `sampleClosedLoop()` → `PolylineSampler` 做段内线性插值，并在末尾补上闭合段。此前内置路线直接取 8 个顶点，相邻点名义步长 40 m、实际几何跳变 100–300 m；现在与模板路径共用同一套步长口径（默认 30 m），且同一 `SimConfig` 两次生成结果一致（`PolylineSampler` 用 `Random(startTimeMillis)` 定种，旧的内置分支用全局 `Random` 做抖动，结果不可复现）。
 
-坐标系改由 `GeneratedTrajectory.isBd09` 随数据一起传递：内置环线标 `true`（顶点按 BD-09 采集，见 `RunningCampus` 顶部注释），用户模板标 `false`（原生 GPS = WGS-84）。仓库不再在两处硬编码这个布尔值。
+坐标系改由 `GeneratedTrajectory.isBd09` 随数据一起传递。**2026-10-14 起两条来源都是 `false`**：内置环线的顶点来自 GPX / 谷歌地球（WGS-84），用户模板来自原生 GPS（同样 WGS-84），两者上传前都要过 `wgs84ToBd09`。此前内置环线标 `true`（原样上传）是错的，会让模拟轨迹在校方地图上偏掉整整一步 WGS→BD（本地约 1159 m）——依据见 [`2026-10-13-explore-sports-h5-protocol-evidence`](../compound/2026-10-13-explore-sports-h5-protocol-evidence.md) §1 的实测追加。
 
 模拟与真实跑步共用同一套上传协议，唯一区别是轨迹来源从 GPS 采集换成了生成器。
 
@@ -145,7 +145,7 @@ depends_on: [network-overview]
 | `RouteTemplateStore` | 以单 JSON 文件持久化模板，并用 `Mutex` 保证写入串行 |
 | `TrajectoryGenerator + PolylineSampler` | 消费默认模板，生成模拟轨迹 |
 
-锚点：`feature/running/ui/RouteTemplateViewModel.kt:33-125` / `feature/running/data/RouteTemplateStore.kt:24-137` / `feature/running/domain/TrajectoryGenerator.kt:41-61` / `feature/running/domain/PolylineSampler.kt:11-105`。
+锚点：`feature/running/ui/RouteTemplateViewModel.kt:33-125` / `feature/running/data/RouteTemplateStore.kt:24-137` / `feature/running/domain/TrajectoryGenerator.kt:40-65` / `feature/running/domain/PolylineSampler.kt:11-105`。
 
 录制路径是：
 
@@ -231,9 +231,9 @@ navigation 层把 running 明确拆成两套共享作用域：
 - `feature/running/service/RunTrackingService.kt:34-89` — 前台 Service 与 GPS 采集
 - `feature/running/domain/GeoDistance.kt:9-18` — 统一距离计算
 - `feature/running/data/RunningEncryption.kt:27-59` — 跑步上传 RSA 加密
-- `feature/running/domain/TrajectoryGenerator.kt:41-61` — 内置路线 / 模板路线双生成入口，共用闭环采样
+- `feature/running/domain/TrajectoryGenerator.kt:40-65` — 内置路线 / 模板路线双生成入口，共用闭环采样
 - `feature/running/domain/PolylineSampler.kt:22-59` — polyline 插值采样
-- `feature/running/domain/RunningCampus.kt:5-11` — 内置环线中心点与坐标系假设说明
+- `feature/running/domain/RunningCampus.kt:5-16` — 内置环线中心点与坐标系假设说明
 - `feature/running/ui/RouteTemplateViewModel.kt:64-107` — 模板录制保存与质量校验接入点
 - `feature/running/data/RouteTemplateStore.kt:24-137` — 模板持久化边界
 - `feature/running/ui/RunningHomeScreen.kt:89-108` — 真实跑步入口与互斥守卫
@@ -248,10 +248,11 @@ navigation 层把 running 明确拆成两套共享作用域：
 - **模板保存有两级校验** —— `RouteTemplateRules` 负责硬拒绝，`RouteQualityChecker` 只给 WARNING，不直接拒绝（`feature/running/domain/RouteTemplate.kt:43-52` / `feature/running/domain/RouteQualityChecker.kt:23-56`）。
 - **跑步加密要求字段名和值都加密，但 `runningRoute` 必须明文** —— 键名全加密、值除轨迹外全加密（`feature/running/data/RunningEncryption.kt`）。轨迹是唯一的长字段，几十段 RSA 块拼成的密文服务端解不开，会导致记录被判"运动轨迹异常，无效"。实测：同一份数据加密=无效、明文=有效 → [`decision-running-route-plaintext`](../compound/2026-10-14-decision-running-route-plaintext.md)
 - **服务端不做校园围栏校验** —— 轨迹明显不在校园内仍判有效。因此上传路径不做 `RouteQualityChecker`（此前加的检查只产出噪音，已移除）；模板录制仍做质量检查，那是本地体验。
-- **坐标系只影响轨迹画在哪，不影响有效性** —— 真实跑步仍做 WGS-84 → BD-09 转换（官方 H5 用 `BMap` + `Convertor.translate(1→5)`，显示侧确实是 BD-09）。`RunningCampus` 中心常量已于 2026-10-14 换成用户提供的 `31.134154 / 118.631502`（替换掉来源不明的 `31.13893 / 118.628131`，两点相距约 620 m）；该点属于哪种坐标系仍未证实，但由于服务端不做围栏校验，它只影响内置模拟环线的位置与模板质量检查的框。
+- **坐标系只影响轨迹画在哪，不影响有效性** —— 服务端显示侧是 BD-09（官方 H5 用 `BMap` + `Convertor.translate(1→5)`；2026-10-14 先由一次 535 m 东南偏移反证，再用原始 WGS-84 的 GPX 路径录模板 + 模拟提交，官方 App 里轨迹正常落回校内操场，端到端结案），所以上传前一律 WGS-84 → GCJ-02 → BD-09。`RunningCampus` 中心常量已确认为 **WGS-84**（来源是 GPX / 谷歌地球）。
+- **用模拟器验证坐标链路时，喂进去的点必须是原始 WGS-84** —— 若喂已经转过 GCJ-02 的轨迹，我们又会做一遍 WGS→GCJ，地图上正好多出一个约 531 m 的东南偏移，看起来像代码错了、其实是测试数据错了。
 - 模拟器可以验证跑步上传，但有两个坑：Android 17 的 AVD 上 `adb emu geo fix` 返回 OK 却不再更新位置，要改用 `cmd location providers add-test-provider gps` + `set-test-provider-enabled gps true` + `set-test-provider-location gps --location <lat>,<lng>`；另外宿主机 `127.0.0.1:7897` 的系统代理会透明接管模拟器出口，把国内服务端的请求变成 HTML 503 / 超时，看起来像服务端挂了或代码有 bug。
 - **里程口径与官方 H5 不同** —— H5 是「相邻点 ≤3 m 不计里程但点一律保留」，我们是「<1.5 m 或 >120 m 的段连点一起丢」（`feature/running/service/RunningTracker.kt:66-77`）；且 H5 上传 GPS 瞬时速度，我们上传里程/时长平均速度。若服务端按官方口径校验点密度或速度一致性，这是第一个要回看的地方（来源同上 §4）。
-- **内置路线现在也走 `PolylineSampler`** —— 曾经直接取 8 个顶点，导致名义 40 m 步长、实际百米级跳变；改动后两条生成分支共享同一采样口径，且同一 `SimConfig` 结果可复现（`feature/running/domain/TrajectoryGenerator.kt:41-61`）。
+- **内置路线现在也走 `PolylineSampler`** —— 曾经直接取 8 个顶点，导致名义 40 m 步长、实际百米级跳变；改动后两条生成分支共享同一采样口径，且同一 `SimConfig` 结果可复现（`feature/running/domain/TrajectoryGenerator.kt:40-65`）。
 - **两个单 JSON 存储的落盘都是"写 tmp + rename 覆盖"** —— 不允许先 `delete` 再 `rename`：rename 失败时会连已有文件一起丢掉（`feature/running/data/RouteTemplateStore.kt:128-133` / `feature/schedule/data/ScheduleCacheStore.kt:109-118`）。rename 失败只清 tmp，保留旧文件。
 - **repository 的 `catch` 一律先重抛 `CancellationException`** —— 否则 ViewModel 离开页面触发的取消会被当成业务失败继续写 UI state（`feature/running/data/RunningRepository.kt`，6 处）。
 - **`runningType` 当前按 `"1"` 处理** —— 代码与本地协议文档都按这一假设实现；若后续补抓发现跑团/补跑场景存在分支，这里要回看。来源：`docs/接口分析/跑步接口深度分析报告.md` §8.10。
