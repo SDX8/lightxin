@@ -1,11 +1,14 @@
 package com.lightxin.feature.aiclass.data
 
+import android.util.Log
 import com.lightxin.core.network.FifSessionManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val PROBE_LOG_TAG = "AiClassProbe"
 
 /**
  * 启动探测的结论。只有 [Blocked] 才该在首页提示多端登录，
@@ -31,10 +34,17 @@ class AiClassSessionGuard @Inject constructor(
             return@withTimeoutOrNull AiClassSessionCheck.Skipped
         }
         val result = fifSession.performSso()
+        val error = result.exceptionOrNull()
         when {
             result.isSuccess -> AiClassSessionCheck.Healthy
-            isProbeFailure(result.exceptionOrNull()) -> AiClassSessionCheck.NetworkIssue
-            else -> AiClassSessionCheck.Blocked
+            isProbeFailure(error) -> {
+                Log.w(PROBE_LOG_TAG, "会话体检未能下结论：${error?.message}")
+                AiClassSessionCheck.NetworkIssue
+            }
+            else -> {
+                Log.w(PROBE_LOG_TAG, "服务端拒绝 FIF 会话：${error?.message}")
+                AiClassSessionCheck.Blocked
+            }
         }
     } ?: AiClassSessionCheck.NetworkIssue
 

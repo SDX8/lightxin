@@ -21,3 +21,8 @@ local.properties
 reasonix.toml
 .DS_Store
 
+# release 签名：密钥文件与口令都不入库
+keystore.properties
+*.keystore
+*.jks
+
