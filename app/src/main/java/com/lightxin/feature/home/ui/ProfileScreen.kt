@@ -1,5 +1,9 @@
 package com.lightxin.feature.home.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Apps
@@ -31,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,14 +48,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
+import com.lightxin.core.auth.avatarInitial
 import com.lightxin.core.designsystem.component.LxCard
 import com.lightxin.core.designsystem.component.LxDialog
 import com.lightxin.core.designsystem.component.LxDialogConfirmTone
+import com.lightxin.core.designsystem.component.LxTextField
 import com.lightxin.core.designsystem.theme.LxCream
 import com.lightxin.core.designsystem.theme.LxInk
 import com.lightxin.core.designsystem.theme.LxInkGhost
@@ -59,6 +71,7 @@ import com.lightxin.core.designsystem.theme.LxSand
 import com.lightxin.core.designsystem.theme.LxTerra
 import com.lightxin.core.designsystem.theme.NewsreaderDisplay
 import com.lightxin.core.designsystem.theme.NewsreaderLarge
+import java.io.File
 
 @Composable
 fun ProfileScreen(
@@ -81,6 +94,19 @@ fun ProfileScreen(
         }
     }
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var nicknameDraft by remember { mutableStateOf("") }
+
+    val avatarPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> if (uri != null) viewModel.pickAvatar(uri) }
+
+    LaunchedEffect(uiState.profileError) {
+        uiState.profileError?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            viewModel.dismissProfileError()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -103,19 +129,27 @@ fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // ── 用户信息卡 ──
-        LxCard {
+        // ── 用户信息卡（点开可改昵称与头像）──
+        LxCard(
+            onClick = {
+                nicknameDraft = uiState.nickname
+                showProfileDialog = true
+            },
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AvatarRing(userName = uiState.userName)
+                ProfileAvatar(
+                    displayName = uiState.displayName,
+                    avatarFileName = uiState.avatarFileName,
+                )
                 Spacer(modifier = Modifier.width(16.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = uiState.userName.ifBlank { "未知用户" },
+                        text = uiState.displayName.ifBlank { "未知用户" },
                         fontFamily = NewsreaderLarge,
                         fontWeight = FontWeight.Medium,
                         fontSize = 20.sp,
@@ -124,11 +158,16 @@ fun ProfileScreen(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = uiState.userCode.ifBlank { "---" },
+                        text = uiState.subtitleLine,
                         fontSize = 13.sp,
                         color = LxInkMuted,
                     )
                 }
+                Text(
+                    text = "修改",
+                    fontSize = 13.sp,
+                    color = LxInkGhost,
+                )
             }
         }
 
@@ -203,13 +242,64 @@ fun ProfileScreen(
             confirmTone = LxDialogConfirmTone.Destructive,
         )
     }
+
+    if (showProfileDialog) {
+        val saveNickname: () -> Unit = {
+            viewModel.saveNickname(nicknameDraft)
+            showProfileDialog = false
+        }
+        LxDialog(
+            title = "昵称与头像",
+            confirmText = "保存昵称",
+            dismissText = "关闭",
+            onDismissRequest = { showProfileDialog = false },
+            onDismiss = { showProfileDialog = false },
+            onConfirm = saveNickname,
+            content = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    ProfileAvatar(
+                        displayName = uiState.displayName,
+                        avatarFileName = uiState.avatarFileName,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ProfileActionButton(text = "选择头像", emphasized = true) {
+                            avatarPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        }
+                        if (uiState.avatarFileName != null) {
+                            ProfileActionButton(text = "移除头像", emphasized = false) {
+                                viewModel.removeAvatar()
+                            }
+                        }
+                    }
+                }
+                LxTextField(
+                    value = nicknameDraft,
+                    onValueChange = { nicknameDraft = it },
+                    label = "昵称",
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            viewModel.saveNickname(nicknameDraft)
+                            showProfileDialog = false
+                        },
+                    ),
+                )
+            },
+        )
+    }
 }
 
 // ═══════════════ 子组件 ═══════════════
 
 @Composable
-private fun AvatarRing(userName: String) {
-    val char = userName.firstOrNull()?.toString() ?: "?"
+private fun ProfileAvatar(displayName: String, avatarFileName: String?) {
+    val context = LocalContext.current
+    val avatarFile = avatarFileName?.let { File(context.filesDir, it) }?.takeIf { it.exists() }
     Box(
         modifier = Modifier
             .size(56.dp)
@@ -217,14 +307,37 @@ private fun AvatarRing(userName: String) {
             .background(LxSand),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = char,
-            fontFamily = NewsreaderLarge,
-            fontWeight = FontWeight.Medium,
-            fontSize = 24.sp,
-            color = LxTerra,
-        )
+        if (avatarFile != null) {
+            AsyncImage(
+                model = avatarFile,
+                contentDescription = "头像",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Text(
+                text = avatarInitial(displayName),
+                fontFamily = NewsreaderLarge,
+                fontWeight = FontWeight.Medium,
+                fontSize = 24.sp,
+                color = LxTerra,
+            )
+        }
     }
+}
+
+@Composable
+private fun ProfileActionButton(text: String, emphasized: Boolean, onClick: () -> Unit) {
+    Text(
+        text = text,
+        fontSize = 14.sp,
+        fontWeight = if (emphasized) FontWeight.Medium else FontWeight.Normal,
+        color = if (emphasized) LxTerra else LxInkMuted,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

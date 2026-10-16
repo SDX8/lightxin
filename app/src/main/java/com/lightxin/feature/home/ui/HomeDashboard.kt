@@ -133,7 +133,7 @@ fun HomeDashboard(
         ) {
             // ── 问候 + 副标 ──
             GreetingSection(
-                userName = uiState.userName,
+                userName = uiState.displayName,
                 subtitle = uiState.subtitle,
                 modifier = Modifier.padding(horizontal = 24.dp),
             )

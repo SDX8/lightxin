@@ -3,8 +3,10 @@ package com.lightxin.feature.home.ui
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lightxin.core.auth.ProfileStore
 import com.lightxin.core.auth.SessionManager
 import com.lightxin.core.auth.TokenManager
+import com.lightxin.core.auth.resolveDisplayName
 import com.lightxin.core.notification.CourseNotificationScheduler
 import com.lightxin.feature.aiclass.data.AiClassSessionCheck
 import com.lightxin.feature.aiclass.data.AiClassSessionGuard
@@ -50,13 +52,17 @@ data class HomeDashboardData(
 
 data class HomeUiState(
     val userName: String = "",
+    val nickname: String = "",
     val subtitle: String = "",
     val dashboardData: HomeDashboardData = HomeDashboardData(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val errors: Map<String, String> = emptyMap(),
     val aiClassBlocked: Boolean = false,
-)
+) {
+    /** 问候语用昵称，没设过才用服务端真实姓名 */
+    val displayName: String get() = resolveDisplayName(nickname, userName)
+}
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -70,6 +76,7 @@ class HomeViewModel @Inject constructor(
     private val courseNotificationScheduler: CourseNotificationScheduler,
     private val aiClassSessionGuard: AiClassSessionGuard,
     private val sessionManager: SessionManager,
+    private val profileStore: ProfileStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -84,6 +91,12 @@ class HomeViewModel @Inject constructor(
         // 先填本地姓名，避免首次 snapshot 未到达时界面空白
         viewModelScope.launch {
             _uiState.update { it.copy(userName = tokenManager.getUserName().orEmpty()) }
+        }
+        // 昵称是本地资料，改了立刻反映到问候语
+        viewModelScope.launch {
+            profileStore.profile.collect { profile ->
+                _uiState.update { it.copy(nickname = profile.nickname) }
+            }
         }
         // 立即应用 bootstrap 已有的 snapshot（若有）
         homeBootstrap.snapshot.value?.let { applyBootstrap(it) }
@@ -120,6 +133,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             aiClassSessionGuard.clearFifSession()
             sessionManager.logout()
+            profileStore.clear()
             _uiState.update { it.copy(aiClassBlocked = false) }
             onDone()
         }

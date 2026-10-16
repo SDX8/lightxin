@@ -4,7 +4,7 @@ slug: auth-overview
 scope: core/auth/ 的校内认证基础设施：RSA 加密、Token DataStore、登录态/首启态 Flow、TokenRefresher 接口边界
 summary: auth 是校内默认栈的身份基础层，TokenManager 以 lightxin_auth DataStore 持久化 token 与用户字段，SessionManager 只暴露登录/首启/退出的窄接口，RSAUtils 同时承载登录密码和跑步数据两套公钥加密，TokenRefresher 作为 network 401 刷新的反向接口。
 status: current
-last_reviewed: 2026-05-05
+last_reviewed: 2026-10-16
 tags: [auth, token, datastore, rsa, session, refresh]
 depends_on: [login-overview, network-overview]
 ---
@@ -42,7 +42,7 @@ depends_on: [login-overview, network-overview]
 
 ## 2. 结构与交互
 
-### 2.1 四个文件分工
+### 2.1 文件分工
 
 | 文件 | 职责 |
 |---|---|
@@ -50,6 +50,8 @@ depends_on: [login-overview, network-overview]
 | `TokenManager.kt` | `lightxin_auth` DataStore、登录凭据读写、首启态、登录态 Flow、会话清除。锚点：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:17-117` |
 | `SessionManager.kt` | 面向 UI / navigation 的窄门面：`isLoggedIn / isOnboarded / markOnboarded() / logout()`。锚点：`app/src/main/java/com/lightxin/core/auth/SessionManager.kt:7-21` |
 | `TokenRefresher.kt` | 401 自动刷新用接口，隔离 network 和 login 之间的方向依赖。锚点：`app/src/main/java/com/lightxin/core/auth/TokenRefresher.kt:3-5` |
+| `RememberedLoginStore.kt` | 登录页「记住密码」：学号 + AndroidKeyStore AES/GCM 加密后的密码，存 `lightxin_login`。锚点：`app/src/main/java/com/lightxin/core/auth/RememberedLoginStore.kt:26-124` |
+| `ProfileStore.kt` | 用户自填的昵称与头像（`lightxin_profile` + `filesDir` 图片），与登录身份分开存。锚点：`app/src/main/java/com/lightxin/core/auth/ProfileStore.kt:26-157` |
 
 ### 2.2 TokenManager 是唯一校内身份持有者
 
@@ -108,6 +110,17 @@ depends_on: [login-overview, network-overview]
 - `PUBLIC_KEY_2` → `encryptSportData()`，由 `RunningEncryption` 加密跑步上传字段名和值。锚点：`app/src/main/java/com/lightxin/core/auth/RSAUtils.kt:23-36` / `app/src/main/java/com/lightxin/feature/running/data/RunningEncryption.kt:50-56`。
 
 加密算法统一为 `RSA/None/PKCS1Padding`，按 117 bytes 分段加密后 Base64 NO_WRAP 输出。锚点：`app/src/main/java/com/lightxin/core/auth/RSAUtils.kt:29-58`。
+
+### 2.7 本地资料与登录身份分开存
+
+`core/auth` 下除了 `lightxin_auth`，还有两个各自独立的 DataStore：
+
+- `RememberedLoginStore`（`lightxin_login`）—— 登录页的学号与「记住密码」，密码经 AndroidKeyStore AES/GCM 加密后落盘。锚点：`app/src/main/java/com/lightxin/core/auth/RememberedLoginStore.kt:26`。
+- `ProfileStore`（`lightxin_profile`）—— 用户自己填的昵称与头像。昵称明文存 prefs；头像由 Photo Picker 选中后**当场**压到最长边 512 的 JPEG 写进 `filesDir/profile_avatar.jpg`（content Uri 只有临时读权限，不能记 Uri）。锚点：`app/src/main/java/com/lightxin/core/auth/ProfileStore.kt:26,64-93`。
+
+三者不能混：`TokenManager.userName` 是服务端下发的**真实姓名**，还要作为 `userName` 参数发回接口（见 `network-overview` 的 `AuthInterceptor`），一旦被昵称覆盖会同时弄坏显示与请求。所以显示一律走 `resolveDisplayName(nickname, serverName)`（`ProfileStore.kt:133`），请求继续用真名。
+
+换账号必须一起清：`ProfileViewModel.logout()` 与 `HomeViewModel.relogin()` 都会 `profileStore.clear()`（连昵称、头像文件一起删），否则下一个人会顶着上一个人的资料。
 
 ## 3. 数据与状态
 
@@ -171,6 +184,8 @@ depends_on: [login-overview, network-overview]
 - `app/src/main/java/com/lightxin/core/auth/TokenManager.kt:111-116` — 退出登录清除边界。
 - `app/src/main/java/com/lightxin/core/auth/SessionManager.kt:7-21` — UI/navigation 会话门面。
 - `app/src/main/java/com/lightxin/core/auth/TokenRefresher.kt:3-5` — 401 刷新接口。
+- `app/src/main/java/com/lightxin/core/auth/RememberedLoginStore.kt:26-124` — 记住密码（Keystore 加解密 + DataStore）。
+- `app/src/main/java/com/lightxin/core/auth/ProfileStore.kt:26-157` — 昵称与头像落盘，含四个纯函数。
 - `app/src/main/java/com/lightxin/feature/login/data/LoginRepository.kt:20-37` — 登录后写 TokenManager。
 - `app/src/main/java/com/lightxin/feature/login/data/LoginRepository.kt:45-65` — refresh token 实现。
 - `app/src/main/java/com/lightxin/core/network/AuthInterceptor.kt:36,56,75` — snapshot 消费点。
@@ -180,7 +195,8 @@ depends_on: [login-overview, network-overview]
 ## 6. 已知约束 / 边界情况
 
 - **`isLoggedIn` 不代表 token 一定有效** —— 只代表本地有非空 accessToken；实际过期由请求返回 401 后刷新。锚点：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:52-54` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:21-28`。
-- **退出登录不清 FIF 会话** —— `SessionManager.logout()` 只到 `TokenManager.clear()`；FIF 独立会话清理属于 `FifSessionManager.clear()`，当前 Profile 退出入口没有联动它。锚点：`app/src/main/java/com/lightxin/core/auth/SessionManager.kt:18-20` / `app/src/main/java/com/lightxin/feature/home/ui/ProfileViewModel.kt:49-53` / `app/src/main/java/com/lightxin/core/network/FifSessionManager.kt:269-270`。
+- **退出登录会连带清掉 FIF 会话与本地资料** —— `SessionManager.logout()` 只到 `TokenManager.clear()`；FIF 独立会话与昵称/头像由调用方补齐：`ProfileViewModel.logout()` 依次 `sessionManager.logout()` → `fifSession.clear()` → `profileStore.clear()`，首页 AI课堂横幅的快捷重登（`HomeViewModel.relogin()`）走同一套。锚点：`app/src/main/java/com/lightxin/core/auth/SessionManager.kt:18-20` / `app/src/main/java/com/lightxin/feature/home/ui/ProfileViewModel.kt:124-134`。
+- **`TokenManager.userName` 是发给服务端的真实姓名，不能被昵称覆盖** —— 显示层一律 `resolveDisplayName(nickname, serverName)`；把昵称写进 `lightxin_auth` 会在下次登录/刷新时被服务端冲掉，还会污染 `AuthInterceptor` 注入的请求参数。锚点：`app/src/main/java/com/lightxin/core/auth/ProfileStore.kt:133` / `app/src/main/java/com/lightxin/core/network/AuthInterceptor.kt:78-99`。
 - **`TokenRefreshInterceptor` 重放的是进入该拦截器时的原始 request** —— 默认 OkHttpClient 的拦截器顺序是 `AuthInterceptor → TokenRefreshInterceptor → Logging`；401 后在 `TokenRefreshInterceptor` 内再次 `chain.proceed(chain.request())`，不会重新经过前序 `AuthInterceptor`。锚点：`app/src/main/java/com/lightxin/core/network/NetworkModule.kt:32-50` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:25-28`。
 - **RSA 公钥硬编码在客户端** —— 这是服务端协议要求，不是可隐藏的客户端秘密。锚点：`app/src/main/java/com/lightxin/core/auth/RSAUtils.kt:17-27`。
 - **`fileAddress` 只持久化不在 core/auth 内解释** —— 语义来自登录响应，core/auth 只保存和暴露快照字段。锚点：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:25,38,66,74,107`。

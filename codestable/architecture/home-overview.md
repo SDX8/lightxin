@@ -74,7 +74,7 @@ depends_on: [network-overview, running-overview]
 
 `HomeViewModel` 的初始化顺序是：
 
-1. 先从 `TokenManager` 填本地 `userName`
+1. 先从 `TokenManager` 填本地 `userName`（服务端真实姓名），并订阅 `ProfileStore.profile` 拿昵称
 2. 若 `HomeBootstrap.snapshot` 已存在，立即 `applyBootstrap()`
 3. 继续订阅后续 snapshot，接住“splash 已放行但数据稍后才到”的情况
 4. 另外并发加载 bootstrap 不覆盖的 `running + labor`
@@ -162,7 +162,16 @@ depends_on: [network-overview, running-overview]
 - **不并进 splash，也不并进下拉动画** —— 探测最坏要等 12s 超时，塞进 `loadAll()` 会让下拉圈一直转，塞进 `HomeBootstrap` 会推迟首帧。
 - **断网不报「多端登录」** —— `performSso()` 把 `IOException` 和超时都包成普通 `Exception`，所以结论只能靠异常类型链判断（`isProbeFailure`），不能靠 message 文本。
 
-横幅上的「重新登录」不直接执行：先弹 `LxDialog` 讲清代价（会把官方 App 挤下线，只想看课表可以「先不登录」），确认后才走 `HomeViewModel.relogin()`（`HomeViewModel.kt:119-126`）—— 清 FIF 身份 + 清校内 token，再 `navigate(Routes.LOGIN) { popUpTo(HOME) inclusive }`。因为登录页有「记住密码」（`core/auth/RememberedLoginStore`），重登基本是一次点击。
+横幅上的「重新登录」不直接执行：先弹 `LxDialog` 讲清代价（会把官方 App 挤下线，只想看课表可以「先不登录」），确认后才走 `HomeViewModel.relogin()`（`HomeViewModel.kt:119-126`）—— 清 FIF 身份 + 清校内 token + 清本地资料，再 `navigate(Routes.LOGIN) { popUpTo(HOME) inclusive }`。因为登录页有「记住密码」（`core/auth/RememberedLoginStore`），重登基本是一次点击。
+
+### 2.8 「我的」页可改昵称与头像，昵称反过来驱动首页问候
+
+锚点：`feature/home/ui/ProfileScreen.kt:132-172`（用户卡）、`feature/home/ui/ProfileScreen.kt:246-294`（编辑弹窗）、`feature/home/ui/ProfileScreen.kt:300-327`（`ProfileAvatar`）
+
+- 用户卡整卡可点（`LxCard(onClick = …)`）打开 `LxDialog`：`LxTextField` 改昵称、系统 Photo Picker（`PickVisualMedia`）选头像、有头像时可移除。头像选中后立刻在弹窗内的圆形预览里可见。
+- 显示优先级是 **昵称 > 服务端真实姓名**：`HomeUiState.displayName` 与 `ProfileUiState.displayName` 都走同一个 `resolveDisplayName`；设过昵称后，我的页小字那行会补回真名（`ProfileUiState.subtitleLine` → `张建泓 · 学号`），免得忘了自己顶着的是谁。
+- 头像渲染用 Coil `AsyncImage` 圆形裁切，没有头像时回退 `avatarInitial(displayName)` 的首字母圆片——所以改昵称也会换掉那个字母。
+- 存储、清洗规则与"为什么不能直接改 `TokenManager.userName`"见 `codestable/architecture/auth-overview.md` §2.7。
 
 ## 3. 数据与状态
 
@@ -172,7 +181,7 @@ depends_on: [network-overview, running-overview]
 |---|---|---|
 | `HomeBootstrapSnapshot` | 冷启动一次性快照 | `feature/home/domain/HomeBootstrap.kt:123-130` |
 | `HomeDashboardData` | 首页聚合后的领域摘要 | `feature/home/ui/HomeViewModel.kt:41-49` |
-| `HomeUiState` | Compose 订阅的完整首页状态（含 `aiClassBlocked`） | `feature/home/ui/HomeViewModel.kt:51-58` |
+| `HomeUiState` | Compose 订阅的完整首页状态（含 `aiClassBlocked` 与派生 `displayName`） | `feature/home/ui/HomeViewModel.kt:51-65` |
 | `HomeScene` | 场景判定结果枚举族 | `feature/home/domain/HomeScene.kt:12-33` |
 | `SubtitleContext` | 通用副标题挑选输入 | `feature/home/domain/SubtitleLibrary.kt:10-15` |
 
@@ -291,6 +300,7 @@ depends_on: [network-overview, running-overview]
 - `feature/home/domain/SubtitleLibrary.kt:32-175` — 通用副标题桶与场景文案
 - `feature/home/ui/HomeDashboard.kt:118-228` — 首页主渲染骨架
 - `feature/home/ui/HomeDashboard.kt:391-426` — AI课堂多端登录横幅
+- `feature/home/ui/ProfileScreen.kt:132-294` — 我的页用户卡与昵称/头像编辑弹窗
 - `feature/home/ui/HomeDashboard.kt:208-335` — 问候动画与下一节 headline
 - `feature/home/ui/HomeScreen.kt:51-146` — 三 tab 容器与“我的”页路由出口
 
