@@ -61,6 +61,8 @@ import com.lightxin.core.designsystem.theme.LxTerra
 import com.lightxin.core.designsystem.theme.LxTerraGlow
 import com.lightxin.core.designsystem.theme.LxWarning
 import com.lightxin.feature.schedule.domain.Course
+import com.lightxin.feature.schedule.domain.EVENING_ROW
+import com.lightxin.feature.schedule.domain.MORNING_ROW
 import com.lightxin.feature.schedule.domain.courseSectionRangeLabel
 import java.time.Instant
 import java.time.LocalDate
@@ -287,9 +289,11 @@ private fun ScheduleGrid(
     onCourseClick: (Course) -> Unit,
 ) {
     val today = remember { LocalDate.now().dayOfWeek.value } // 1=周一
-    // 大一大二接口会下发第0节（早自习），存在时网格从第0节起画；大三等无第0节则从第1节起，行为不变
-    val firstSection = if (courses.any { it.startSection <= 0 }) 0 else 1
-    val rowCount = SECTION_COUNT - firstSection + 1
+    // 早自习行（第 0 节）与晚自习行（第 12 节）都是用户自设的，只有课表里真有它才占行，
+    // 所以首末行由课程数据本身决定；大三没第 0 节时依旧从第 1 节起画。
+    val firstSection = if (courses.any { it.startSection <= MORNING_ROW }) MORNING_ROW else 1
+    val lastSection = maxOf(SECTION_COUNT, courses.maxOfOrNull { it.endSection } ?: SECTION_COUNT)
+    val rowCount = lastSection - firstSection + 1
 
     Column(
         modifier = Modifier
@@ -346,7 +350,11 @@ private fun ScheduleGrid(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = if (section == 0) "早" else "$section",
+                            text = when {
+                                section == MORNING_ROW -> "早"
+                                section >= EVENING_ROW -> "晚"
+                                else -> "$section"
+                            },
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -442,7 +450,7 @@ private fun CourseDetail(course: Course) {
 
         if (course.room.isNotBlank()) {
             LxDetailRow(
-                label = if (course.morningSlot != null) "地点" else "教室",
+                label = if (course.specialSlot != null) "地点" else "教室",
                 value = course.room,
                 labelWidth = 48.dp,
                 showDivider = false,

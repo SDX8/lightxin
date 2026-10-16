@@ -65,7 +65,7 @@ class CourseNotificationScheduler @Inject constructor(
         }
 
         val capsuleText = shortenRoom(target.room)
-        // 早自习/早锻炼的地点是用户自填，可以留空
+        // 早/晚自习的地点是用户自填，可以留空
         val locationLine = if (target.room.isBlank()) "" else "\n地点：${target.room}"
         val content = "$statusText$locationLine"
         val bigText = "$statusText$locationLine"

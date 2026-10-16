@@ -115,7 +115,7 @@ depends_on: [network-overview, running-overview]
 - 1-11 节对应固定起止时刻
 - 下午首节固定为第 5 节
 - 晚间首节固定为第 9 节
-- 用户自设的第 0 节（早自习/早锻炼）不在全校作息表里，由 `Course.morningSlot` 自带时段——`CourseTimes` 负责"自带优先，否则查表"
+- 用户自设的早/晚行（第 0 节早自习/早锻炼、第 12 节晚自习）不在全校作息表里，由 `Course.specialSlot` 自带时段——`CourseTimes` 负责"自带优先，否则查表"
 
 锚点：`feature/home/domain/CourseTimes.kt` / `feature/home/domain/SectionSchedule.kt:13-35`。
 
@@ -181,7 +181,7 @@ depends_on: [network-overview, running-overview]
 | 类型 | 含义 | 定义位置 |
 |---|---|---|
 | `HomeBootstrapSnapshot` | 冷启动一次性快照 | `feature/home/domain/HomeBootstrap.kt:123-130` |
-| `HomeDashboardData` | 首页聚合后的领域摘要（`tomorrowFirstCourse` 带整条课，早自习也能念出名字） | `feature/home/ui/HomeViewModel.kt:44-52` |
+| `HomeDashboardData` | 首页聚合后的领域摘要（`tomorrowFirstCourse` 带整条课，早自习/晚自习也能念出名字） | `feature/home/ui/HomeViewModel.kt:44-52` |
 | `HomeUiState` | Compose 订阅的完整首页状态（含 `aiClassBlocked` 与派生 `displayName`） | `feature/home/ui/HomeViewModel.kt:54-66` |
 | `HomeScene` | 场景判定结果枚举族 | `feature/home/domain/HomeScene.kt:12-33` |
 | `SubtitleContext` | 通用副标题挑选输入 | `feature/home/domain/SubtitleLibrary.kt:10-15` |
@@ -257,7 +257,7 @@ depends_on: [network-overview, running-overview]
 - `今天没有课程安排`
 - `正在上 · 课程名 · 教室`
 - `下一节 · 课程名 · 教室 · 时刻`
-- `明天第 n 节开课` / `明天有早自习`（明天第一节是用户自设的第 0 节时，不能念成"第 0 节"）
+- `明天第 n 节开课` / `明天有晚自习`（明天第一节是用户自设的早/晚行时，不能念成"第 0 节"或"第 12 节"）
 - `今天的课全部结束`
 
 课程名与教室之间用 `joinWithDots` 拼接，地点留空时不会拖出一个悬空的 `·`（早安排的地点允许不填）。
@@ -292,7 +292,7 @@ depends_on: [network-overview, running-overview]
 - **首页首屏只预取“基础信号”** —— 代码现实是 splash 阶段只取课表与查寝，不把跑步 / 劳教也塞进阻塞链。来源：`MainActivity.kt:35-43`、`feature/home/domain/HomeBootstrap.kt:54-68`。这条决定直接影响后续是否把新摘要数据加入 `HomeBootstrap`。
 - **AI课堂体检走独立协程，结论只认异常类型** —— 探测既不进 splash 也不进下拉动画，且只有「服务端拒绝映射」才提示，网络与超时一律沉默。来源：`feature/home/ui/HomeViewModel.kt:104-132`、`feature/aiclass/data/AiClassSessionGuard.kt:52-53`。
 - **首页叙事规则以课程节次表为准** —— 场景时间判断统一依赖 `SectionSchedule`，而不是零散写死在 UI。来源：`feature/home/domain/SceneResolver.kt:59-127`、`feature/home/domain/SectionSchedule.kt:13-35`。
-- **取一节课的时间只经 `CourseTimes`** —— 用户自设的第 0 节自带时段、不在全校作息表里；直接 `SectionSchedule.startOf(course.startSection)` 会拿到 null，让早自习在"下一节"、副标题场景和上课倒计时通知里静默消失。来源：`feature/home/domain/CourseTimes.kt`、`feature/schedule/domain/MorningSection.kt:12-16`。
+- **取一节课的时间只经 `CourseTimes`** —— 用户自设的早/晚行自带时段、不在全校作息表里；直接 `SectionSchedule.startOf(course.startSection)` 会拿到 null，让早自习/晚自习在"下一节"、副标题场景和上课倒计时通知里静默消失。来源：`feature/home/domain/CourseTimes.kt`、`feature/schedule/domain/SpecialSection.kt:28-36`。
 - **架构文档以代码现实为准，设计意图仅作对照输入保留** —— `homepage-design-spec.md` 预期”单智慧卡片状态机”，当前代码只落地了场景优先级、切换触发与部分动画约束。来源：`docs/项目规划/homepage-design-spec.md:81-99`、`docs/项目规划/homepage-design-spec.md:126-136`、`feature/home/ui/HomeDashboard.kt:114-200`。
 
 ## 6. 代码锚点
@@ -302,7 +302,7 @@ depends_on: [network-overview, running-overview]
 - `feature/home/ui/HomeViewModel.kt:68-217` — 首页状态聚合、刷新与副标题计算
 - `feature/home/domain/SceneResolver.kt:41-127` — 场景优先级与时间规则
 - `feature/home/domain/SectionSchedule.kt:13-35` — 固定节次时刻表
-- `feature/home/domain/CourseTimes.kt` — 节次时间解析入口（早自习自带时段优先）
+- `feature/home/domain/CourseTimes.kt` — 节次时间解析入口（早/晚自习自带时段优先）
 - `feature/home/domain/SubtitleLibrary.kt:32-175` — 通用副标题桶与场景文案
 - `feature/home/ui/HomeDashboard.kt:118-228` — 首页主渲染骨架
 - `feature/home/ui/HomeDashboard.kt:391-426` — AI课堂多端登录横幅

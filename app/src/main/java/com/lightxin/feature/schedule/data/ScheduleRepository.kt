@@ -5,12 +5,13 @@ import com.lightxin.core.network.CshRetrofit
 import com.lightxin.feature.schedule.domain.Course
 import com.lightxin.feature.schedule.domain.ScheduleData
 import com.lightxin.feature.schedule.domain.WeekInfo
-import com.lightxin.feature.schedule.domain.mergeMorningCourses
+import com.lightxin.feature.schedule.domain.mergeSpecialSections
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import java.io.IOException
+import kotlinx.coroutines.flow.first
 import retrofit2.Retrofit
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -21,7 +22,7 @@ class ScheduleRepository @Inject constructor(
     private val api: ScheduleApi,
     private val tokenManager: TokenManager,
     private val cacheStore: ScheduleCacheStore,
-    private val morningStore: MorningSectionStore,
+    private val specialStore: SpecialSectionStore,
 ) {
     suspend fun getWeekInfo(): Result<WeekInfo> {
         val userCode = tokenManager.getUserCode().orEmpty()
@@ -113,20 +114,26 @@ class ScheduleRepository @Inject constructor(
                     weekDates = weekDates.mapKeys { (day, _) -> day.toString() },
                 )
             )
-            // 缓存只存服务端结果，用户自设的第 0 节在出口处才并进 —— 每所班级不同、也不该被写进别人的快照
-            Result.success(data.withMorningCourses())
+            // 缓存只存服务端结果，用户自设的早/晚行在出口处才并进 —— 每所班级不同、也不该被写进别人的快照
+            Result.success(data.withSpecialSections())
         } catch (e: Exception) {
             val cached = cachedCourses(schoolYear, schoolTerm, week)
             if (cached != null) {
-                Result.success(cached.toScheduleData().withMorningCourses())
+                Result.success(cached.toScheduleData().withSpecialSections())
             } else {
                 Result.failure(Exception(mapErrorMessage("加载课表", e), e))
             }
         }
     }
 
-    private suspend fun ScheduleData.withMorningCourses(): ScheduleData =
-        copy(courses = mergeMorningCourses(courses, morningStore.current()))
+    private suspend fun ScheduleData.withSpecialSections(): ScheduleData =
+        copy(
+            courses = mergeSpecialSections(
+                serverCourses = courses,
+                settings = specialStore.current(),
+                eveningPausedOn = specialStore.eveningPausedOn.first(),
+            ),
+        )
 
     private suspend fun cachedCourses(
         schoolYear: String,

@@ -78,7 +78,7 @@ import java.io.File
 fun ProfileScreen(
     onNavigateCheckin: () -> Unit,
     onNavigateAiClass: () -> Unit,
-    onNavigateMorningSection: () -> Unit,
+    onNavigateSpecialSection: () -> Unit,
     onNavigateMore: () -> Unit,
     onNavigateRouteSimulation: () -> Unit,
     onNavigateAbout: () -> Unit,
@@ -193,9 +193,9 @@ fun ProfileScreen(
                 MenuDivider()
                 ProfileMenuRow(
                     icon = Icons.Outlined.Alarm,
-                    title = "早自习 / 早锻炼",
-                    hint = uiState.morningSettingCount.takeIf { it > 0 }?.let { "已设 $it 条" },
-                    onClick = onNavigateMorningSection,
+                    title = "早自习 / 晚自习",
+                    hint = uiState.specialItemCount.takeIf { it > 0 }?.let { "已设 $it 条" },
+                    onClick = onNavigateSpecialSection,
                 )
                 if (uiState.advancedEnabled) {
                     MenuDivider()

@@ -18,7 +18,7 @@ object Routes {
     fun holidayRegister(holidayId: String) = "holiday/register/$holidayId"
 
     // Schedule
-    const val MORNING_SECTION_SETTINGS = "schedule/morning-section"
+    const val SPECIAL_SECTIONS = "schedule/special-sections"
 
     // Running
     const val RUNNING_HOME = "running/home"

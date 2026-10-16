@@ -60,7 +60,7 @@ import com.lightxin.feature.running.exercise.ui.ExerciseCheckScreen
 import com.lightxin.feature.running.ui.RunningResultScreen
 import com.lightxin.feature.running.ui.RunningSimScreen
 import com.lightxin.feature.running.ui.RunningViewModel
-import com.lightxin.feature.schedule.ui.MorningSectionSettingsScreen
+import com.lightxin.feature.schedule.ui.SpecialSectionSettingsScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -521,8 +521,8 @@ fun LightXinNavHost(
             AboutScreen(onBack = { navController.popBackStack() })
         }
 
-        composable(Routes.MORNING_SECTION_SETTINGS) {
-            MorningSectionSettingsScreen(onBack = { navController.popBackStack() })
+        composable(Routes.SPECIAL_SECTIONS) {
+            SpecialSectionSettingsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

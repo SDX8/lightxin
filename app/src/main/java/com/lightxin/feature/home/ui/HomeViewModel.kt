@@ -24,7 +24,7 @@ import com.lightxin.feature.labor.data.LaborRepository
 import com.lightxin.feature.labor.domain.HoursSummary
 import com.lightxin.feature.running.data.RunningRepository
 import com.lightxin.feature.running.domain.RunningDashboard
-import com.lightxin.feature.schedule.data.MorningSectionStore
+import com.lightxin.feature.schedule.data.SpecialSectionStore
 import com.lightxin.feature.schedule.data.ScheduleRepository
 import com.lightxin.feature.schedule.domain.Course
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,7 +43,7 @@ private const val HOME_LOG_TAG = "HomeViewModel"
 
 data class HomeDashboardData(
     val todayCourses: List<Course> = emptyList(),
-    val tomorrowFirstCourse: Course? = null, // 明天第一节课（早自习也算），null 表示明天没课
+    val tomorrowFirstCourse: Course? = null, // 明天第一节课（早自习/晚自习也算），null 表示明天没课
     val currentWeek: Int = 0,
     val nextCheckin: CheckinTask? = null,
     val holidayTask: HolidayTask? = null,
@@ -78,7 +78,7 @@ class HomeViewModel @Inject constructor(
     private val aiClassSessionGuard: AiClassSessionGuard,
     private val sessionManager: SessionManager,
     private val profileStore: ProfileStore,
-    private val morningStore: MorningSectionStore,
+    private val specialStore: SpecialSectionStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -136,7 +136,7 @@ class HomeViewModel @Inject constructor(
             aiClassSessionGuard.clearFifSession()
             sessionManager.logout()
             profileStore.clear()
-            morningStore.clear()
+            specialStore.clear()
             _uiState.update { it.copy(aiClassBlocked = false) }
             onDone()
         }

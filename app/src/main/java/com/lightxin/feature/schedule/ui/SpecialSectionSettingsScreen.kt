@@ -1,7 +1,6 @@
 package com.lightxin.feature.schedule.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -26,8 +26,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +38,7 @@ import com.lightxin.core.designsystem.component.LxChoiceChip
 import com.lightxin.core.designsystem.component.LxDialog
 import com.lightxin.core.designsystem.component.LxDialogConfirmTone
 import com.lightxin.core.designsystem.component.LxEmptyHint
+import com.lightxin.core.designsystem.component.LxOutlinedButton
 import com.lightxin.core.designsystem.component.LxTextField
 import com.lightxin.core.designsystem.component.LxTopBar
 import com.lightxin.core.designsystem.theme.LxInk
@@ -45,26 +46,27 @@ import com.lightxin.core.designsystem.theme.LxInkMuted
 import com.lightxin.core.designsystem.theme.LxRose
 import com.lightxin.core.designsystem.theme.LxTerra
 import com.lightxin.core.designsystem.theme.NewsreaderDisplay
-import com.lightxin.feature.schedule.domain.MORNING_DAY_NAMES
-import com.lightxin.feature.schedule.domain.MorningSetting
-import com.lightxin.feature.schedule.domain.MorningSlot
-import com.lightxin.feature.schedule.domain.morningDaysLabel
-import com.lightxin.feature.schedule.domain.morningTimeRange
+import com.lightxin.feature.schedule.domain.DAY_NAMES
+import com.lightxin.feature.schedule.domain.SectionKind
+import com.lightxin.feature.schedule.domain.SpecialItem
+import com.lightxin.feature.schedule.domain.SpecialSlot
+import com.lightxin.feature.schedule.domain.allowedDaysFor
+import com.lightxin.feature.schedule.domain.specialDaysLabel
+import com.lightxin.feature.schedule.domain.specialTimeRange
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun MorningSectionSettingsScreen(
+fun SpecialSectionSettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: MorningSectionViewModel = hiltViewModel(),
+    viewModel: SpecialSectionViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var pendingDelete by remember { mutableStateOf<MorningSetting?>(null) }
+    var pendingDelete by remember { mutableStateOf<SpecialItem?>(null) }
 
     Scaffold(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { LxTopBar(title = "早自习 / 早锻炼", onBack = onBack) },
+        topBar = { LxTopBar(title = "早自习 / 晚自习", onBack = onBack) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -76,21 +78,35 @@ fun MorningSectionSettingsScreen(
         ) {
             val draft = uiState.draft
             if (draft == null) {
-                MorningSettingList(
+                SpecialItemList(
                     settings = uiState.settings,
                     onEdit = viewModel::startEdit,
                     onDelete = { pendingDelete = it },
                 )
+                if (uiState.hasEvening) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    EveningPauseRow(
+                        checked = uiState.eveningPausedToday,
+                        onToggle = { viewModel.setEveningPaused(!uiState.eveningPausedToday) },
+                    )
+                }
                 Spacer(modifier = Modifier.height(18.dp))
-                LxButton(text = "添加早安排", onClick = viewModel::startAdd)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LxOutlinedButton(
+                        text = "添加早安排",
+                        onClick = { viewModel.startAdd(SectionKind.MORNING) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    LxButton(
+                        text = "添加晚自习",
+                        onClick = { viewModel.startAdd(SectionKind.EVENING) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             } else {
-                MorningSettingForm(
-                    name = draft.name,
-                    room = draft.room,
-                    slot = draft.slot,
-                    days = draft.days,
+                SpecialItemForm(
+                    draft = draft,
                     error = uiState.error,
-                    isNew = draft.id == null,
                     onNameChange = viewModel::onNameChange,
                     onRoomChange = viewModel::onRoomChange,
                     onSlotChange = viewModel::onSlotChange,
@@ -103,9 +119,10 @@ fun MorningSectionSettingsScreen(
     }
 
     pendingDelete?.let { setting ->
+        val rowLabel = if (setting.slot.kind == SectionKind.MORNING) "早" else "晚"
         LxDialog(
             title = "删除「${setting.name}」",
-            message = "课表上的第 0 节会一并消失。",
+            message = "课表上「$rowLabel」那一行会一并消失。",
             confirmText = "删除",
             dismissText = "取消",
             onDismissRequest = { pendingDelete = null },
@@ -120,10 +137,10 @@ fun MorningSectionSettingsScreen(
 }
 
 @Composable
-private fun MorningSettingList(
-    settings: List<MorningSetting>,
-    onEdit: (MorningSetting) -> Unit,
-    onDelete: (MorningSetting) -> Unit,
+private fun SpecialItemList(
+    settings: List<SpecialItem>,
+    onEdit: (SpecialItem) -> Unit,
+    onDelete: (SpecialItem) -> Unit,
 ) {
     if (settings.isEmpty()) {
         Box(
@@ -132,7 +149,7 @@ private fun MorningSettingList(
                 .padding(vertical = 28.dp),
             contentAlignment = Alignment.Center,
         ) {
-            LxEmptyHint(message = "还没有早安排")
+            LxEmptyHint(message = "还没有早/晚安排")
         }
         return
     }
@@ -147,7 +164,7 @@ private fun MorningSettingList(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = morningDaysLabel(setting.days).ifBlank { "未选星期" },
+                            text = specialDaysLabel(setting.days).ifBlank { "未选星期" },
                             fontFamily = NewsreaderDisplay,
                             fontWeight = FontWeight.Medium,
                             fontSize = 17.sp,
@@ -157,7 +174,7 @@ private fun MorningSettingList(
                         Text(
                             text = listOfNotNull(
                                 setting.name,
-                                morningTimeRange(setting.slot),
+                                specialTimeRange(setting.slot),
                                 setting.room.takeIf { it.isNotBlank() },
                             ).joinToString(" · "),
                             fontSize = 12.sp,
@@ -180,25 +197,43 @@ private fun MorningSettingList(
     }
 }
 
+/** 周五/周六已经由规则挡掉，这个开关只用来顶掉节假日那种例外 */
+@Composable
+private fun EveningPauseRow(checked: Boolean, onToggle: () -> Unit) {
+    LxCard(onClick = onToggle) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "今晚无晚自习",
+                fontSize = 15.sp,
+                color = LxInk,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(checked = checked, onCheckedChange = { onToggle() })
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MorningSettingForm(
-    name: String,
-    room: String,
-    slot: MorningSlot,
-    days: Set<Int>,
+private fun SpecialItemForm(
+    draft: SpecialDraft,
     error: String?,
-    isNew: Boolean,
     onNameChange: (String) -> Unit,
     onRoomChange: (String) -> Unit,
-    onSlotChange: (MorningSlot) -> Unit,
+    onSlotChange: (SpecialSlot) -> Unit,
     onDayToggle: (Int) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    val kindLabel = if (draft.slot.kind == SectionKind.MORNING) "早安排" else "晚自习"
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
-            text = if (isNew) "新的早安排" else "编辑早安排",
+            text = (if (draft.id == null) "新的" else "编辑") + kindLabel,
             fontFamily = NewsreaderDisplay,
             fontWeight = FontWeight.Medium,
             fontSize = 22.sp,
@@ -206,7 +241,7 @@ private fun MorningSettingForm(
         )
 
         LxTextField(
-            value = name,
+            value = draft.name,
             onValueChange = onNameChange,
             label = "名称",
         )
@@ -214,23 +249,23 @@ private fun MorningSettingForm(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "时段", style = MaterialTheme.typography.labelMedium, color = LxInkMuted)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MorningSlot.entries.forEach { option ->
+                SpecialSlot.entries.filter { it.kind == draft.slot.kind }.forEach { option ->
                     LxChoiceChip(
                         text = option.label,
-                        selected = option == slot,
+                        selected = option == draft.slot,
                         onClick = { onSlotChange(option) },
                     )
                 }
             }
             Text(
-                text = morningTimeRange(slot),
+                text = specialTimeRange(draft.slot),
                 fontSize = 12.sp,
                 color = LxInkMuted,
             )
         }
 
         LxTextField(
-            value = room,
+            value = draft.room,
             onValueChange = onRoomChange,
             label = "地点",
         )
@@ -238,10 +273,11 @@ private fun MorningSettingForm(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "星期", style = MaterialTheme.typography.labelMedium, color = LxInkMuted)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MORNING_DAY_NAMES.forEach { (day, label) ->
+                val allowed = allowedDaysFor(draft.slot.kind)
+                DAY_NAMES.filterKeys { it in allowed }.forEach { (day, label) ->
                     LxChoiceChip(
                         text = label,
-                        selected = day in days,
+                        selected = day in draft.days,
                         onClick = { onDayToggle(day) },
                     )
                 }

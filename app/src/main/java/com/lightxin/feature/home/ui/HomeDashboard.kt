@@ -380,10 +380,10 @@ private fun buildNextClassHeadline(
     return tomorrowLine ?: "今天的课全部结束"
 }
 
-/** 明天第一节是早自习/早锻炼时不能念成"第 0 节开课" */
+/** 明天第一节是用户自设的早/晚行时不能念成"第 0 节开课"或"第 12 节开课" */
 private fun tomorrowHeadline(tomorrowFirst: Course?): String? = when {
     tomorrowFirst == null -> null
-    tomorrowFirst.morningSlot != null -> "明天有${tomorrowFirst.name}"
+    tomorrowFirst.specialSlot != null -> "明天有${tomorrowFirst.name}"
     else -> "明天第 ${tomorrowFirst.startSection} 节开课"
 }
 

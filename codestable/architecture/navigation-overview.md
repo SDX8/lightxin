@@ -51,7 +51,7 @@ depends_on: [home-overview, login-overview, checkin-overview, running-overview, 
 | 考试成绩 | 1 | EXAM_SCORES |
 | 素质学分 | 1 | CREDIT_OVERVIEW |
 | 节假日 | 1 | HOLIDAY_REGISTER（含参数 `holidayId`） |
-| 课表 | 1 | MORNING_SECTION_SETTINGS（早自习/早锻炼设置） |
+| 课表 | 1 | SPECIAL_SECTIONS（早自习/晚自习设置） |
 | 关于 | 1 | ABOUT |
 
 合计 **26 条路由常量**。
