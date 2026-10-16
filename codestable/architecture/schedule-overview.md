@@ -2,9 +2,9 @@
 doc_type: architecture
 slug: schedule-overview
 scope: feature/schedule/ 的周课表获取、三态周选择器、动态节次课程网格渲染、断网本地快照回退，以及与首页 SceneResolver 的共享边界
-summary: schedule 以 ScheduleRepository 封装周次信息与课表数据并 write-through 到 JSON 快照，断网/接口异常时回退读快照并在 UI 标注快照时间；UI 层用 LazyRow 胶囊周选择器 + 支持第 0 节的绝对定位网格渲染 7 天课程，详情走 ModalBottomSheet
+summary: schedule 以 ScheduleRepository 封装周次信息与课表数据并 write-through 到 JSON 快照，断网/接口异常时回退读快照并在 UI 标注快照时间；UI 层用 LazyRow 胶囊周选择器 + 支持第 0 节的绝对定位网格渲染 7 天课程，详情走 ModalBottomSheet；用户可自设早自习/早锻炼作为第 0 节，注入发生在 repository 出口、不进离线缓存
 status: current
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-16
 tags: [schedule, course, timetable, week-selector, grid, section-zero, offline-cache]
 depends_on: [network-overview, home-overview]
 ---
@@ -110,6 +110,19 @@ UI 层用 `CELL_HEIGHT = 58.dp` 为基准，先根据课程数据计算 `firstSe
 
 完整理由与被排除的方案见 `codestable/compound/2026-10-12-decision-schedule-offline-snapshot.md`。
 
+### 2.9 用户自设的第 0 节：早自习 / 早锻炼
+
+锚点：`feature/schedule/domain/MorningSection.kt:12-113`、`feature/schedule/data/MorningSectionStore.kt:19-74`、`feature/schedule/data/ScheduleRepository.kt:117-129`、`feature/schedule/ui/MorningSectionSettingsScreen.kt`
+
+学校课表里没有早自习这一行，但大一大二实际有。接口本身有时会下发 `ksjc=0`（见 §2.3 的 `firstSection` 判定），所以显示层早就容得下第 0 行；缺的只是"用户能自己填"。
+
+- **时段写死，名称自由** —— `MorningSlot` 只有两档：早自习 07:40–08:15、早锻炼 07:30–08:00。课表接口从不下发时间，`SectionSchedule` 本来就是客户端写死的作息表，早安排没有第二个来源，所以沿用同一做法；名称让用户自己填（有的班叫早读、晨跑）。
+- **一条设置 = 名称 + 时段 + 地点 + 勾选的周几**，`days` 只允许周一~周五，且同一天不能被两条设置占用（每天只可能有一种早安排），保存前用 `morningDayConflicts` 拦下并提示"周五已被「早锻炼」占用"。
+- **注入点在 repository 出口，不进缓存** —— `ScheduleRepository` 先按服务端结果写快照，再 `withMorningCourses()` 并进去；离线回退那条返回也走同一个函数，所以断网时早自习照样在。若把注入放进 `courses` 构造之前，用户自填的内容会被写进 `schedule_cache.json`。
+- **学校下发优先** —— `mergeMorningCourses` 会跳过接口已经给过第 0 节的那些天，避免同列叠出两个第 0 节方块。
+- **时间解析改走 `CourseTimes`** —— `Course` 多了可空的 `morningSlot` 字段；第 0 节不在 `SectionSchedule` 的 1..11 里，`startOf(0)` 返回 null，会让首页"下一节"、上课倒计时通知、场景副标题全部静默跳过它。`feature/home/domain/CourseTimes.kt` 统一成"自带时段优先，否则查作息表"，首页与通知因此都能把早自习当一节课算。
+- **设置页入口在「我的」** —— `Routes.MORNING_SECTION_SETTINGS`，菜单行的 hint 显示"已设 N 条"。
+
 ## 3. 数据与状态
 
 ### 3.1 关键状态模型
@@ -117,8 +130,10 @@ UI 层用 `CELL_HEIGHT = 58.dp` 为基准，先根据课程数据计算 `firstSe
 | 类型 | 含义 | 定义位置 |
 |---|---|---|
 | `WeekInfo` | currentWeek / totalWeeks / schoolYear / schoolTerm / cachedAtMillis | `ScheduleModels.kt:3-10` |
-| `Course` | name / startSection / endSection / room / teacher / dayOfWeek | `ScheduleModels.kt:12-19` |
-| `ScheduleData` | courses / weekDates / cachedAtMillis | `ScheduleModels.kt:24-29` |
+| `Course` | name / startSection / endSection / room / teacher / dayOfWeek / **morningSlot**（非空即用户自设的第 0 节） | `ScheduleModels.kt:12-22` |
+| `ScheduleData` | courses / weekDates / cachedAtMillis | `ScheduleModels.kt:26-33` |
+| `MorningSlot` | 两档写死时段：早自习 07:40–08:15、早锻炼 07:30–08:00 | `MorningSection.kt:12-16` |
+| `MorningSetting` | id / name / slot / room / days（周一~周五，跨条互斥） | `MorningSection.kt:23-30` |
 | `ScheduleUiState` | weekInfo / courses / weekDates / selectedWeek / isLoading / error / cachedAtMillis | `ScheduleViewModel.kt:15-24` |
 | `CachedWeekInfo` / `CachedCourseWeek` | 落盘的快照形态；weekDates 用 String 键规避 Gson 对非 String 键的不稳定行为 | `ScheduleCacheStore.kt:18-42` |
 
@@ -141,13 +156,18 @@ UI 层用 `CELL_HEIGHT = 58.dp` 为基准，先根据课程数据计算 `firstSe
 ## 5. 代码锚点
 
 - `feature/schedule/data/ScheduleApi.kt:9-23` — 周次与课表两个接口
-- `feature/schedule/data/ScheduleRepository.kt:24-133` — 两段式加载主链 + 快照 write-through / 失败回退
+- `feature/schedule/data/ScheduleRepository.kt:24-136` — 两段式加载主链 + 快照 write-through / 失败回退 + 第 0 节注入
 - `feature/schedule/data/ScheduleCacheStore.kt:48-163` — JSON 快照读写、key 构造与按学期裁剪
 - `feature/schedule/data/ScheduleResponse.kt:8-46` — 响应模型
-- `feature/schedule/domain/ScheduleModels.kt:3-29` — WeekInfo / Course / ScheduleData
+- `feature/schedule/data/MorningSectionStore.kt:19-74` — 早安排落盘（`lightxin_morning`，整表 JSON）
+- `feature/schedule/domain/ScheduleModels.kt:3-33` — WeekInfo / Course / ScheduleData
+- `feature/schedule/domain/MorningSection.kt:12-113` — 早安排模型与全部纯函数（展开、冲突、合并、文案）
+- `feature/home/domain/CourseTimes.kt` — 节次时间解析（自带时段优先，否则查作息表）
 - `feature/schedule/ui/ScheduleViewModel.kt:24-93` — 状态管理与加载
-- `feature/schedule/ui/ScheduleScreen.kt:86-450` — 周选择器 + 网格 + 离线提示条 + 详情
+- `feature/schedule/ui/ScheduleScreen.kt:86-455` — 周选择器 + 网格 + 离线提示条 + 详情
+- `feature/schedule/ui/MorningSectionSettingsScreen.kt` — 早安排列表与表单
 - `app/src/test/java/com/lightxin/feature/schedule/data/ScheduleCacheStoreTest.kt` — key 构造 / 裁剪 / Gson 往返
+- `app/src/test/java/com/lightxin/feature/schedule/domain/MorningSectionTest.kt` — 展开、互斥、与学校下发合并
 - `feature/home/domain/SceneResolver.kt` — 首页场景引擎消费课表
 
 ## 6. 已知约束 / 边界情况
@@ -156,7 +176,8 @@ UI 层用 `CELL_HEIGHT = 58.dp` 为基准，先根据课程数据计算 `firstSe
 - **离线时当前周可能偏旧** —— `currentWeek` 同样取自快照，隔天/隔周断网打开时"今天"高亮与首页场景判断可能落在旧周次上，由提示条的快照时间向用户说明新鲜度。
 - **快照按 `userCode` 分键并裁剪到当前学期** —— 换账号后读不到上一位使用者的课表；退出登录不主动删盘上文件（键含 userCode，不构成跨账号可读）。
 - **最大节次仍按 10 节处理** —— `SECTION_COUNT = 10` 仍是网格最大常量；常规显示 1-10，遇到第 0 节课程时显示 0-10（第 0 节标签为“早”）。来源：`ScheduleScreen.kt:61,238-320`。
-- **第 0 节只影响课表页网格起点** —— 首页课程时间判断仍由 `feature/home/domain/SectionSchedule.kt` 维护，不从课表 UI 的动态 `firstSection` 反推。
+- **第 0 节的时间不在 `SectionSchedule` 里** —— 作息表只有 1..11 节，`SectionSchedule.startOf(0)` 返回 null。任何按节次取时刻的新代码都必须走 `CourseTimes.startOf(course)`，否则用户自设的早自习会在首页"下一节"、场景副标题和上课倒计时通知里被静默跳过（这正是当初的坑）。课表 UI 的动态 `firstSection` 仍然只是网格起点，不参与时间计算。
+- **晚自习尚未实现** —— 数据模型（`MorningSlot` 加一档 + 允许第 6/7 天）留得下，但产品明确先不做；不要顺手把 `MORNING_ALLOWED_DAYS` 放开到 7 天，那会连带影响 §2.9 的互斥判断与文案。
 - **课程详情中的 `LxDetailRow` 使用固定 48dp labelWidth** —— 适用于当前字段长度，若新增字段需要调整。
 - **`selectedWeek` 在 ViewModel 重建时回到 init 值** —— 不持久化，进程重建后从当前周开始。
 

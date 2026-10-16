@@ -5,6 +5,7 @@ import com.lightxin.core.network.CshRetrofit
 import com.lightxin.feature.schedule.domain.Course
 import com.lightxin.feature.schedule.domain.ScheduleData
 import com.lightxin.feature.schedule.domain.WeekInfo
+import com.lightxin.feature.schedule.domain.mergeMorningCourses
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -20,6 +21,7 @@ class ScheduleRepository @Inject constructor(
     private val api: ScheduleApi,
     private val tokenManager: TokenManager,
     private val cacheStore: ScheduleCacheStore,
+    private val morningStore: MorningSectionStore,
 ) {
     suspend fun getWeekInfo(): Result<WeekInfo> {
         val userCode = tokenManager.getUserCode().orEmpty()
@@ -111,16 +113,20 @@ class ScheduleRepository @Inject constructor(
                     weekDates = weekDates.mapKeys { (day, _) -> day.toString() },
                 )
             )
-            Result.success(data)
+            // 缓存只存服务端结果，用户自设的第 0 节在出口处才并进 —— 每所班级不同、也不该被写进别人的快照
+            Result.success(data.withMorningCourses())
         } catch (e: Exception) {
             val cached = cachedCourses(schoolYear, schoolTerm, week)
             if (cached != null) {
-                Result.success(cached.toScheduleData())
+                Result.success(cached.toScheduleData().withMorningCourses())
             } else {
                 Result.failure(Exception(mapErrorMessage("加载课表", e), e))
             }
         }
     }
+
+    private suspend fun ScheduleData.withMorningCourses(): ScheduleData =
+        copy(courses = mergeMorningCourses(courses, morningStore.current()))
 
     private suspend fun cachedCourses(
         schoolYear: String,

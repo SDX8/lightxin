@@ -16,6 +16,8 @@ data class Course(
     val room: String,
     val teacher: String,
     val dayOfWeek: Int,  // 1=周一, 7=周日
+    /** 非空表示这是用户自设的第 0 节（早自习/早锻炼），时间跟着它走，不查全校作息表 */
+    val morningSlot: MorningSlot? = null,
 )
 
 /**

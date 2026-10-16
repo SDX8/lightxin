@@ -10,6 +10,7 @@ import com.lightxin.core.auth.resolveDisplayName
 import com.lightxin.core.network.FifSessionManager
 import com.lightxin.core.settings.DeveloperPrefs
 import com.lightxin.core.settings.UpdatePrefs
+import com.lightxin.feature.schedule.data.MorningSectionStore
 import com.lightxin.feature.update.domain.AppVersion
 import com.lightxin.feature.update.domain.AppVersionProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +30,7 @@ data class ProfileUiState(
     val isLoggingOut: Boolean = false,
     val advancedEnabled: Boolean = false,
     val updateHint: String? = null,
+    val morningSettingCount: Int = 0,
 ) {
     /** 昵称优先，没设过才显示服务端真实姓名 */
     val displayName: String get() = resolveDisplayName(nickname, realName)
@@ -51,6 +53,7 @@ class ProfileViewModel @Inject constructor(
     private val appVersionProvider: AppVersionProvider,
     private val fifSession: FifSessionManager,
     private val profileStore: ProfileStore,
+    private val morningStore: MorningSectionStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProfileUiState())
@@ -70,6 +73,11 @@ class ProfileViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(nickname = profile.nickname, avatarFileName = profile.avatarFileName)
                 }
+            }
+        }
+        viewModelScope.launch {
+            morningStore.settings.collectLatest { settings ->
+                _uiState.update { it.copy(morningSettingCount = settings.size) }
             }
         }
         viewModelScope.launch {
@@ -129,6 +137,8 @@ class ProfileViewModel @Inject constructor(
             fifSession.clear()
             // 昵称与头像同理：换账号不该顶着上一个人的资料
             profileStore.clear()
+            // 早安排是跟班级走的，换账号同样不该沿用
+            morningStore.clear()
             onDone()
         }
     }

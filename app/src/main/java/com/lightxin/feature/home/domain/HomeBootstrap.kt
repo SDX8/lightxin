@@ -60,7 +60,7 @@ class HomeBootstrap @Inject constructor(
                 _snapshot.value = HomeBootstrapSnapshot(
                     userName = userName,
                     todayCourses = courseResult.courses,
-                    tomorrowFirstSection = courseResult.tomorrowFirstSection,
+                    tomorrowFirstCourse = courseResult.tomorrowFirstCourse,
                     currentWeek = courseResult.currentWeek,
                     nextUnsignedCheckin = checkinResult.first,
                     scheduleError = courseResult.error,
@@ -93,13 +93,13 @@ class HomeBootstrap @Inject constructor(
         val today = all.filter { it.dayOfWeek == todayDow }
             .distinctBy { Triple(it.name, it.startSection, it.endSection) }
             .sortedBy { it.startSection }
+        // 带整条课程而不是只带节次：明天第一节是早自习时要能念出它的名字
         val tomorrowFirst = all.filter { it.dayOfWeek == tomorrowDow }
             .minByOrNull { it.startSection }
-            ?.startSection
 
         return CourseLoadResult(
             courses = today,
-            tomorrowFirstSection = tomorrowFirst,
+            tomorrowFirstCourse = tomorrowFirst,
             currentWeek = weekInfo.currentWeek,
             error = coursesResult.exceptionOrNull()?.message,
         )
@@ -113,7 +113,7 @@ class HomeBootstrap @Inject constructor(
 
     private data class CourseLoadResult(
         val courses: List<Course>,
-        val tomorrowFirstSection: Int?,
+        val tomorrowFirstCourse: Course?,
         val currentWeek: Int,
         val error: String?,
     )
@@ -123,7 +123,7 @@ class HomeBootstrap @Inject constructor(
 data class HomeBootstrapSnapshot(
     val userName: String,
     val todayCourses: List<Course>,
-    val tomorrowFirstSection: Int?,
+    val tomorrowFirstCourse: Course?,
     val currentWeek: Int,
     val nextUnsignedCheckin: CheckinTask?,
     val scheduleError: String? = null,

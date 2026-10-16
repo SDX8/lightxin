@@ -132,6 +132,11 @@ fun HomeScreen(
                             launchSingleTop = true
                         }
                     },
+                    onNavigateMorningSection = {
+                        navController.navigate(Routes.MORNING_SECTION_SETTINGS) {
+                            launchSingleTop = true
+                        }
+                    },
                     onNavigateMore = {
                         navController.navigate(Routes.MORE_FEATURES) {
                             launchSingleTop = true

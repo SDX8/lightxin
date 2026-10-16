@@ -61,6 +61,7 @@ import com.lightxin.core.designsystem.theme.LxTerra
 import com.lightxin.core.designsystem.theme.LxTerraGlow
 import com.lightxin.core.designsystem.theme.LxWarning
 import com.lightxin.feature.schedule.domain.Course
+import com.lightxin.feature.schedule.domain.courseSectionRangeLabel
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -434,13 +435,18 @@ private fun CourseDetail(course: Course) {
 
         LxDetailRow(
             label = "时间",
-            value = "星期${DAY_LABELS[course.dayOfWeek - 1]}  第${course.startSection}-${course.endSection}节",
+            value = "星期${DAY_LABELS[course.dayOfWeek - 1]}  ${courseSectionRangeLabel(course)}",
             labelWidth = 48.dp,
             showDivider = false,
         )
 
         if (course.room.isNotBlank()) {
-            LxDetailRow(label = "教室", value = course.room, labelWidth = 48.dp, showDivider = false)
+            LxDetailRow(
+                label = if (course.morningSlot != null) "地点" else "教室",
+                value = course.room,
+                labelWidth = 48.dp,
+                showDivider = false,
+            )
         }
 
         if (course.teacher.isNotBlank()) {

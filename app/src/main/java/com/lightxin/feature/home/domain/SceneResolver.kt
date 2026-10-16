@@ -58,7 +58,7 @@ object SceneResolver {
 
     private fun preClassScene(now: LocalTime, courses: List<Course>): HomeScene.PreClass? {
         for (course in courses) {
-            val start = SectionSchedule.startOf(course.startSection) ?: continue
+            val start = CourseTimes.startOf(course) ?: continue
             if (now >= start) continue
             val minutes = Duration.between(now, start).toMinutes().toInt()
             if (minutes in 1..PRE_CLASS_WINDOW) {
@@ -70,12 +70,12 @@ object SceneResolver {
 
     private fun preNextScene(now: LocalTime, courses: List<Course>): HomeScene.PreNextAfterClass? {
         val current = currentCourse(now, courses) ?: return null
-        val end = SectionSchedule.endOf(current.endSection) ?: return null
+        val end = CourseTimes.endOf(current) ?: return null
         val minutesToEnd = Duration.between(now, end).toMinutes().toInt()
         if (minutesToEnd !in 0..PRE_NEXT_WINDOW) return null
 
         val next = courses.firstOrNull { it.startSection > current.endSection } ?: return null
-        val nextStart = SectionSchedule.startOf(next.startSection) ?: return null
+        val nextStart = CourseTimes.startOf(next) ?: return null
         val minutesToNext = Duration.between(now, nextStart).toMinutes().toInt()
         return HomeScene.PreNextAfterClass(next, minutesToNext)
     }
@@ -120,8 +120,8 @@ object SceneResolver {
 
     private fun currentCourse(now: LocalTime, courses: List<Course>): Course? {
         return courses.firstOrNull { course ->
-            val start = SectionSchedule.startOf(course.startSection) ?: return@firstOrNull false
-            val end = SectionSchedule.endOf(course.endSection) ?: return@firstOrNull false
+            val start = CourseTimes.startOf(course) ?: return@firstOrNull false
+            val end = CourseTimes.endOf(course) ?: return@firstOrNull false
             now >= start && now < end
         }
     }

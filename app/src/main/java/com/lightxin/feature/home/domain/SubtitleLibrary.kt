@@ -79,8 +79,9 @@ object SubtitleLibrary {
             }
         }
 
-        val lastEndSection = ctx.todayCourses.maxOf { it.endSection }
-        val lastEndTime = SectionSchedule.endOf(lastEndSection)
+        // 拿最后一节课本身而不是节次号：只有早自习的一天，第 0 节不在全校作息表里
+        val lastCourse = ctx.todayCourses.maxByOrNull { it.endSection }
+        val lastEndTime = lastCourse?.let { CourseTimes.endOf(it) }
         if (lastEndTime != null && ctx.now.toLocalTime() >= lastEndTime) {
             return SubtitleBucket.DayClassOver
         }

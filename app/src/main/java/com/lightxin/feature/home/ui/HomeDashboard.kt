@@ -77,9 +77,10 @@ import com.lightxin.core.designsystem.theme.LxWarning
 import com.lightxin.core.designsystem.theme.NewsreaderLarge
 import com.lightxin.feature.checkin.domain.CheckinTask
 import com.lightxin.feature.holiday.domain.HolidayTask
-import com.lightxin.feature.home.domain.SectionSchedule
+import com.lightxin.feature.home.domain.CourseTimes
 import com.lightxin.feature.running.domain.RunningDashboard
 import com.lightxin.feature.schedule.domain.Course
+import com.lightxin.feature.schedule.domain.courseSectionLine
 import com.lightxin.navigation.Routes
 import kotlinx.coroutines.delay
 import java.time.LocalDateTime
@@ -171,7 +172,7 @@ fun HomeDashboard(
                 StaggeredCard(index = 0) {
                     NextClassHeadline(
                         courses = data.todayCourses,
-                        tomorrowFirstSection = data.tomorrowFirstSection,
+                        tomorrowFirst = data.tomorrowFirstCourse,
                         modifier = Modifier.padding(horizontal = 24.dp),
                     )
                 }
@@ -328,12 +329,12 @@ private fun SectionRule() {
 @Composable
 private fun NextClassHeadline(
     courses: List<Course>,
-    tomorrowFirstSection: Int?,
+    tomorrowFirst: Course?,
     modifier: Modifier = Modifier,
 ) {
     val now = remember { LocalTime.now() }
-    val headline = remember(courses, tomorrowFirstSection, now) {
-        buildNextClassHeadline(courses, tomorrowFirstSection, now)
+    val headline = remember(courses, tomorrowFirst, now) {
+        buildNextClassHeadline(courses, tomorrowFirst, now)
     }
     Text(
         text = headline,
@@ -348,43 +349,47 @@ private fun NextClassHeadline(
 
 private fun buildNextClassHeadline(
     courses: List<Course>,
-    tomorrowFirstSection: Int?,
+    tomorrowFirst: Course?,
     now: LocalTime,
 ): String {
+    val tomorrowLine = tomorrowHeadline(tomorrowFirst)
     if (courses.isEmpty()) {
-        return if (tomorrowFirstSection != null) {
-            "明天第 $tomorrowFirstSection 节开课"
-        } else {
-            "今天没有课程安排"
-        }
+        return tomorrowLine ?: "今天没有课程安排"
     }
     val current = courses.firstOrNull { c ->
-        val s = SectionSchedule.startOf(c.startSection) ?: return@firstOrNull false
-        val e = SectionSchedule.endOf(c.endSection) ?: return@firstOrNull false
+        val s = CourseTimes.startOf(c) ?: return@firstOrNull false
+        val e = CourseTimes.endOf(c) ?: return@firstOrNull false
         now >= s && now < e
     }
     if (current != null) {
-        return "正在上 · ${current.name} · ${current.room}"
+        return joinWithDots("正在上", current.name, current.room)
     }
     val next = courses.firstOrNull { c ->
-        val s = SectionSchedule.startOf(c.startSection) ?: return@firstOrNull false
+        val s = CourseTimes.startOf(c) ?: return@firstOrNull false
         now < s
     }
     if (next != null) {
-        val start = SectionSchedule.startOf(next.startSection)
+        val start = CourseTimes.startOf(next)
         val clock = if (start != null) {
             String.format(Locale.CHINA, "%02d:%02d", start.hour, start.minute)
         } else {
             "第 ${next.startSection} 节"
         }
-        return "下一节 · ${next.name} · ${next.room} · $clock"
+        return joinWithDots("下一节", next.name, next.room, clock)
     }
-    return if (tomorrowFirstSection != null) {
-        "明天第 $tomorrowFirstSection 节开课"
-    } else {
-        "今天的课全部结束"
-    }
+    return tomorrowLine ?: "今天的课全部结束"
 }
+
+/** 明天第一节是早自习/早锻炼时不能念成"第 0 节开课" */
+private fun tomorrowHeadline(tomorrowFirst: Course?): String? = when {
+    tomorrowFirst == null -> null
+    tomorrowFirst.morningSlot != null -> "明天有${tomorrowFirst.name}"
+    else -> "明天第 ${tomorrowFirst.startSection} 节开课"
+}
+
+/** 地点没填时不留一个悬空的分隔符 */
+private fun joinWithDots(vararg parts: String): String =
+    parts.filter { it.isNotBlank() }.joinToString(" · ")
 
 // ═══════════════ 通用 stagger 动画 ═══════════════
 
@@ -491,7 +496,7 @@ private fun TodayCourseCard(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = "第${course.startSection}-${course.endSection}节 · ${course.room}",
+                                text = courseSectionLine(course),
                                 fontSize = 12.sp,
                                 color = LxInkMuted,
                             )

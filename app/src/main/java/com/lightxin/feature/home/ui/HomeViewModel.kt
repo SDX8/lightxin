@@ -24,6 +24,7 @@ import com.lightxin.feature.labor.data.LaborRepository
 import com.lightxin.feature.labor.domain.HoursSummary
 import com.lightxin.feature.running.data.RunningRepository
 import com.lightxin.feature.running.domain.RunningDashboard
+import com.lightxin.feature.schedule.data.MorningSectionStore
 import com.lightxin.feature.schedule.data.ScheduleRepository
 import com.lightxin.feature.schedule.domain.Course
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,7 +43,7 @@ private const val HOME_LOG_TAG = "HomeViewModel"
 
 data class HomeDashboardData(
     val todayCourses: List<Course> = emptyList(),
-    val tomorrowFirstSection: Int? = null, // 明天第一节课的起始节次，null表示无课
+    val tomorrowFirstCourse: Course? = null, // 明天第一节课（早自习也算），null 表示明天没课
     val currentWeek: Int = 0,
     val nextCheckin: CheckinTask? = null,
     val holidayTask: HolidayTask? = null,
@@ -77,6 +78,7 @@ class HomeViewModel @Inject constructor(
     private val aiClassSessionGuard: AiClassSessionGuard,
     private val sessionManager: SessionManager,
     private val profileStore: ProfileStore,
+    private val morningStore: MorningSectionStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -134,6 +136,7 @@ class HomeViewModel @Inject constructor(
             aiClassSessionGuard.clearFifSession()
             sessionManager.logout()
             profileStore.clear()
+            morningStore.clear()
             _uiState.update { it.copy(aiClassBlocked = false) }
             onDone()
         }
@@ -171,14 +174,14 @@ class HomeViewModel @Inject constructor(
     private fun applyBootstrap(snapshot: HomeBootstrapSnapshot) {
         val mergedData = _uiState.value.dashboardData.copy(
             todayCourses = snapshot.todayCourses,
-            tomorrowFirstSection = snapshot.tomorrowFirstSection,
+            tomorrowFirstCourse = snapshot.tomorrowFirstCourse,
             currentWeek = snapshot.currentWeek,
             nextCheckin = snapshot.nextUnsignedCheckin,
         )
         _uiState.update { current ->
             val merged = current.dashboardData.copy(
                 todayCourses = snapshot.todayCourses,
-                tomorrowFirstSection = snapshot.tomorrowFirstSection,
+                tomorrowFirstCourse = snapshot.tomorrowFirstCourse,
                 currentWeek = snapshot.currentWeek,
                 nextCheckin = snapshot.nextUnsignedCheckin,
             )
@@ -234,7 +237,7 @@ class HomeViewModel @Inject constructor(
             val laborDeferred = async { loadLabor() }
             val holidayDeferred = async { loadHoliday() }
 
-            val (courses, tomorrowFirst, currentWeek, scheduleError) = scheduleDeferred.await()
+            val (courses, tomorrowFirstCourse, currentWeek, scheduleError) = scheduleDeferred.await()
             val (checkinTask, checkinError) = checkinDeferred.await()
             val (running, runningError) = runningDeferred.await()
             val (labor, laborError) = laborDeferred.await()
@@ -250,7 +253,7 @@ class HomeViewModel @Inject constructor(
 
             val merged = HomeDashboardData(
                 todayCourses = courses,
-                tomorrowFirstSection = tomorrowFirst,
+                tomorrowFirstCourse = tomorrowFirstCourse,
                 currentWeek = currentWeek,
                 nextCheckin = checkinTask,
                 holidayTask = holiday,
@@ -278,7 +281,7 @@ class HomeViewModel @Inject constructor(
             context = SubtitleContext(
                 now = now,
                 todayCourses = data.todayCourses,
-                tomorrowFirstSection = data.tomorrowFirstSection,
+                tomorrowFirstSection = data.tomorrowFirstCourse?.startSection,
                 hasPendingCheckin = data.nextCheckin?.let { !it.isSigned } == true,
             ),
             rotation = subtitleRotation,
@@ -287,7 +290,7 @@ class HomeViewModel @Inject constructor(
 
     private data class ScheduleResult(
         val todayCourses: List<Course>,
-        val tomorrowFirstSection: Int?,
+        val tomorrowFirstCourse: Course?,
         val currentWeek: Int,
         val error: String?,
     )
@@ -314,7 +317,6 @@ class HomeViewModel @Inject constructor(
         val tomorrowFirst = allCourses
             .filter { it.dayOfWeek == tomorrowDow }
             .minByOrNull { it.startSection }
-            ?.startSection
 
         return ScheduleResult(todayCourses, tomorrowFirst, weekInfo.currentWeek, coursesResult.exceptionOrNull()?.message)
     }

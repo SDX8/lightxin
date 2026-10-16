@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Bed
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -77,6 +78,7 @@ import java.io.File
 fun ProfileScreen(
     onNavigateCheckin: () -> Unit,
     onNavigateAiClass: () -> Unit,
+    onNavigateMorningSection: () -> Unit,
     onNavigateMore: () -> Unit,
     onNavigateRouteSimulation: () -> Unit,
     onNavigateAbout: () -> Unit,
@@ -187,6 +189,13 @@ fun ProfileScreen(
                     icon = Icons.Outlined.School,
                     title = "AI课堂",
                     onClick = onNavigateAiClass,
+                )
+                MenuDivider()
+                ProfileMenuRow(
+                    icon = Icons.Outlined.Alarm,
+                    title = "早自习 / 早锻炼",
+                    hint = uiState.morningSettingCount.takeIf { it > 0 }?.let { "已设 $it 条" },
+                    onClick = onNavigateMorningSection,
                 )
                 if (uiState.advancedEnabled) {
                     MenuDivider()

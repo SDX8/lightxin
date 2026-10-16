@@ -4,7 +4,7 @@ slug: navigation-overview
 scope: navigation/ 包的路由定义、导航图结构、起始页决策、页面转场动画、与跨页面 ViewModel 共享模式
 summary: navigation 以 Routes 常量 + NavGraph 集中管理 25 条路由，起始页由 isOnboarded / isLoggedIn 两态 Flow 合并决定，支持页面间 SavedStateHandle 传参与跨页面 ViewModel 共享
 status: current
-last_reviewed: 2026-05-31
+last_reviewed: 2026-10-16
 tags: [navigation, navgraph, routes, viewmodel-sharing, transition, more]
 depends_on: [home-overview, login-overview, checkin-overview, running-overview, labor-overview, aiclass-overview, about-overview, exam-overview, credit-overview]
 ---
@@ -36,7 +36,7 @@ depends_on: [home-overview, login-overview, checkin-overview, running-overview, 
 
 ### 2.1 Routes 常量定义
 
-锚点：`navigation/Routes.kt:5-62`
+锚点：`navigation/Routes.kt:5-65`
 
 所有路由集中在单文件，按功能分组：
 
@@ -51,9 +51,10 @@ depends_on: [home-overview, login-overview, checkin-overview, running-overview, 
 | 考试成绩 | 1 | EXAM_SCORES |
 | 素质学分 | 1 | CREDIT_OVERVIEW |
 | 节假日 | 1 | HOLIDAY_REGISTER（含参数 `holidayId`） |
+| 课表 | 1 | MORNING_SECTION_SETTINGS（早自习/早锻炼设置） |
 | 关于 | 1 | ABOUT |
 
-合计 **25 条路由常量**。
+合计 **26 条路由常量**。
 
 参数化路由使用 `fun` 构造完整路径字符串：
 ```kotlin
@@ -147,7 +148,7 @@ AI 课堂页面（AICLASS_HOME / AICLASS_SCAN / AICLASS_DETAIL）共享 `AiClass
 
 ## 5. 代码锚点
 
-- `navigation/Routes.kt:5-62` — 全部 25 条路由常量与参数化构造函数
+- `navigation/Routes.kt:5-65` — 全部 26 条路由常量与参数化构造函数
 - `navigation/NavGraph.kt:56-81` — 起始页决策逻辑 + `resolvedStartRoute` 非空绑定
 - `navigation/NavGraph.kt:78-89` — 默认转场动画
 - `navigation/NavGraph.kt:90-115` — OnboardingScreen 路由

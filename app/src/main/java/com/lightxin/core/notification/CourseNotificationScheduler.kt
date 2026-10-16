@@ -2,7 +2,7 @@ package com.lightxin.core.notification
 
 import android.os.Bundle
 import com.lightxin.R
-import com.lightxin.feature.home.domain.SectionSchedule
+import com.lightxin.feature.home.domain.CourseTimes
 import com.lightxin.feature.schedule.domain.Course
 import com.lightxin.navigation.Routes
 import kotlinx.coroutines.CoroutineScope
@@ -55,7 +55,7 @@ class CourseNotificationScheduler @Inject constructor(
             return
         }
 
-        val startTime = SectionSchedule.startOf(target.startSection) ?: return
+        val startTime = CourseTimes.startOf(target) ?: return
         val minutesUntilStart = ChronoUnit.MINUTES.between(now, startTime)
 
         val (title, statusText) = if (minutesUntilStart > 0) {
@@ -65,8 +65,10 @@ class CourseNotificationScheduler @Inject constructor(
         }
 
         val capsuleText = shortenRoom(target.room)
-        val content = "$statusText\n地点：${target.room}"
-        val bigText = "$statusText\n地点：${target.room}"
+        // 早自习/早锻炼的地点是用户自填，可以留空
+        val locationLine = if (target.room.isBlank()) "" else "\n地点：${target.room}"
+        val content = "$statusText$locationLine"
+        val bigText = "$statusText$locationLine"
 
         val extras = Bundle().apply {
             putString("courseName", target.name)
@@ -110,7 +112,7 @@ class CourseNotificationScheduler @Inject constructor(
         return courses
             .sortedBy { it.startSection }
             .firstOrNull { course ->
-                val startTime = SectionSchedule.startOf(course.startSection) ?: return@firstOrNull false
+                val startTime = CourseTimes.startOf(course) ?: return@firstOrNull false
                 val minutesUntilStart = ChronoUnit.MINUTES.between(now, startTime)
                 // 课前 25 分钟 到 课后 5 分钟
                 minutesUntilStart in -DISMISS_AFTER_START_MINUTES..TRIGGER_MINUTES
