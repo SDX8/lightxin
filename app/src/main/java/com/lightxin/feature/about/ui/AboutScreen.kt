@@ -38,7 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -125,7 +124,7 @@ fun AboutScreen(
 }
 
 /**
- * 开启调试入口前要先过口令，避免其他同学误开「模拟提交」。
+ * 下面是打开开发者模式的功能，防止都能打开路径模拟。
  * 校验本身只是客户端拦截，见 [DeveloperPasscode] 的说明。
  */
 @Composable
@@ -145,8 +144,8 @@ private fun DeveloperPasscodeDialog(
     }
 
     LxDialog(
-        title = "启用调试功能",
-        message = "开启后将显示\"模拟提交\"与\"路线模拟\"入口。此类功能仅供开发调试，生成的数据为模拟结果，不代表真实跑步记录，请勿用于日常考核。",
+        title = "Enable Developer Mode",
+        message = "功能仅供开发调试",
         confirmText = "启用",
         dismissText = "取消",
         onDismissRequest = onDismiss,
@@ -242,7 +241,7 @@ private fun DeveloperToggleRow(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "启用调试功能（需密码）",
+            text = "Enable Developer Mode",
             fontSize = 15.sp,
             color = LxInk,
             modifier = Modifier.weight(1f),
