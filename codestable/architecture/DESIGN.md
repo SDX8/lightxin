@@ -1,7 +1,7 @@
 # 轻小信 (LightXin) 架构总入口
 
-> 状态：持续同步（2026-10-12 同步课表断网本地快照回退）
-> 创建日期：2026-04-21（最近更新：2026-10-12）
+> 状态：持续同步（2026-10-17 同步底栏「待办」tab 与用户自设的早/晚自习行）
+> 创建日期：2026-04-21（最近更新：2026-10-17）
 
 ## 1. 项目简介
 
@@ -10,7 +10,7 @@
 **当前实现状态**（截至 2026-05-31）：
 
 - MVP 五大模块（登录 / 课程表 / 查寝 / 跑步 / 劳教）已全部上线
-- 在 MVP 之上还叠加：AI 课堂（FIF 独立会话 + 数字码 / 扫码签到 / 作业详情）、首启欢迎页、关于页 + 调试开关、更多功能页（劳动教育 / 考试成绩 / 素质学分 / 实况通知权限引导）、首页"此刻我该做什么"叙事场景（7 类场景 + 副标题动态轮换 + 启动预加载）、跑步路线模板系统（录制 / 列表 / 详情 / 质量校验 / 模板驱动模拟）、大一大二智慧运动年级分流（俱乐部详情 / 锻炼考勤 / 课外跑步进度）、节假日离返校登记（首页卡片 + 查寝列表双 section + 独立登记表单）、Flyme / Android 16 / 普通三分支实况通知
+- 在 MVP 之上还叠加：AI 课堂（FIF 独立会话 + 数字码 / 扫码签到 / 作业详情）、首启欢迎页、关于页 + 调试开关、更多功能页（劳动教育 / 考试成绩 / 素质学分 / 实况通知权限引导）、首页"此刻我该做什么"叙事场景（7 类场景 + 副标题动态轮换 + 启动预加载）、跑步路线模板系统（录制 / 列表 / 详情 / 质量校验 / 模板驱动模拟）、大一大二智慧运动年级分流（俱乐部详情 / 锻炼考勤 / 课外跑步进度）、节假日离返校登记（首页卡片 + 查寝列表双 section + 独立登记表单）、Flyme / Android 16 / 普通三分支实况通知、用户自设的早自习 / 晚自习行、底栏「待办」tab（本地作业与事务清单）
 
 `docs/` 下多份规划文档是这些阶段当时的蓝本，多数已是"完成记录"而非未来方向；接口协议文档（`docs/接口分析/`）仍是长期有效的参考与踩坑实录。
 
@@ -28,6 +28,7 @@
 | `GeneratedTrajectory` | 模拟轨迹及其坐标系标记（`isBd09`）；内置环线为 BD-09，用户录制模板为 WGS-84，上传方据此决定是否转换 |
 | `ScheduleCacheStore` | 课表离线快照：`filesDir/schedule_cache.json` 存 `CachedWeekInfo` + 逐周 `CachedCourseWeek`，`ScheduleRepository` 成功后 write-through、失败时回退并用 `cachedAtMillis` 标注新鲜度；见 `feature/schedule/data/ScheduleCacheStore.kt` |
 | `HolidayTask` | 节假日离返校登记任务；入口在首页卡片和查寝列表页双 section，表单页由 `feature/holiday/` 独立承载 |
+| `TodoItem` | 用户自记的一条待办（标题 + 可选科目 + 截止日）；纯本地，落在 `filesDir/todo_items.json`，入口是底栏「待办」tab；见 `feature/todo/` |
 | `LiveActivityNotifier` | 跨 feature 的实况通知统一门面；根据设备能力选择 Flyme 私有 / Android 16 promoted / 普通通知 backend |
 | `MoreFeaturesScreen` | 更多功能聚合页；承载劳动教育、考试成绩、素质学分，以及实况通知权限引导开关 |
 | `轻小信 / LightXin` | 本项目名；包名 `com.lightxin` |
@@ -45,13 +46,14 @@
 - `designsystem/` — `Theme / Color / Type / Shape` + 11 个通用组件文件（`LxCard` / `LxButton` 等）；详见 [`designsystem-overview.md`](designsystem-overview.md)
 - `settings/` — `DeveloperPrefs`（`lightxin_dev` DataStore 的 `advanced_enabled` 调试开关），由 About 页写入，Profile / Running 等页面读取
 
-### 3.2 feature/（14 个功能包，按 `data / domain / ui` 三层）
+### 3.2 feature/（15 个功能包，按 `data / domain / ui` 三层）
 
 | 功能包 | 说明 |
 |---|---|
 | `login` | 登录 + RSA 密码加密 + Token 存取 |
 | `home` | 首页容器 + 底部导航 + 场景驱动叙事（`HomeScene` / `SubtitleLibrary` / `HomeBootstrap` 预加载）；详见 [`home-overview.md`](home-overview.md) |
-| `schedule` | 周课表 + 三态周选择器（当前 / 选中 / 其他）+ 支持第 0 节的动态节次网格 + 断网本地快照回退；详见 [`schedule-overview.md`](schedule-overview.md) |
+| `schedule` | 周课表 + 三态周选择器（当前 / 选中 / 其他）+ 首末行动态的节次网格（含用户自设的早/晚自习行）+ 断网本地快照回退；详见 [`schedule-overview.md`](schedule-overview.md) |
+| `todo` | 待办清单：作业 / 事务条目（标题 + 可选科目 + 截止日），底栏第 3 个 tab，今天（含逾期）/ 以后 / 已完成 三段，纯本地 JSON 落盘；详见 [`todo-overview.md`](todo-overview.md) |
 | `checkin` | 查寝签到：任务列表 / 详情 / 照片上传 / 提交；列表页同时承载 fdygl 同源节假日任务入口 |
 | `holiday` | 节假日离返校登记：任务列表状态判断 / 表单回填 / 保存提交，入口挂在首页卡片与查寝列表页；详见 [`holiday-overview.md`](holiday-overview.md) |
 | `running` | 跑步：GPS 真实模式（前台 `RunTrackingService`）+ 模拟模式（`TrajectoryGenerator`）+ **路线模板系统**（录制 / 列表 / 详情 / 质量校验 / 设置页）+ 大一大二智慧运动分流 / 俱乐部 / 锻炼考勤；详见 [`running-overview.md`](running-overview.md) |
@@ -85,6 +87,7 @@
 > - [`onboarding-overview.md`](onboarding-overview.md) — 首启欢迎页 + Canvas 插画动效
 > - [`about-overview.md`](about-overview.md) — 品牌展示 + 调试开关
 > - [`navigation-overview.md`](navigation-overview.md) — 25 条路由常量 + 起始页决策 + ViewModel 共享
+> - [`todo-overview.md`](todo-overview.md) — 待办清单：三段列表 + 纯本地 JSON 落盘
 
 ## 4. 关键架构决定
 

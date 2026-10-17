@@ -34,15 +34,15 @@ depends_on: [network-overview, running-overview]
 
 ## 2. 结构与交互
 
-### 2.1 `HomeScreen` 是三 tab 容器，`HomeDashboard` 才是首页主页面
+### 2.1 `HomeScreen` 是四 tab 容器，`HomeDashboard` 才是首页主页面
 
 `HomeScreen` 自己只做三件事：
 
-- 管理 `首页 / 课程表 / 我的` 三个一级 tab
+- 管理 `首页 / 课程表 / 待办 / 我的` 四个一级 tab（索引 0..3）
 - 把 tab 0 绑定到 `HomeDashboard`
 - 在“我的”页挂出查寝、劳教、AI 课堂、路线模拟、关于、退出登录等跳转
 
-锚点：`feature/home/ui/HomeScreen.kt:43-49` / `feature/home/ui/HomeScreen.kt:51-146`。
+锚点：`feature/home/ui/HomeScreen.kt:56-61` / `feature/home/ui/HomeScreen.kt:63-165`。待办 tab 详见 `codestable/architecture/todo-overview.md`。
 
 首页模块在架构上分两层：
 
@@ -308,7 +308,7 @@ depends_on: [network-overview, running-overview]
 - `feature/home/ui/HomeDashboard.kt:391-426` — AI课堂多端登录横幅
 - `feature/home/ui/ProfileScreen.kt:132-294` — 我的页用户卡与昵称/头像编辑弹窗
 - `feature/home/ui/HomeDashboard.kt:208-335` — 问候动画与下一节 headline
-- `feature/home/ui/HomeScreen.kt:51-146` — 三 tab 容器与“我的”页路由出口
+- `feature/home/ui/HomeScreen.kt:56-165` — 四 tab 容器与“我的”页路由出口
 
 ## 7. 已知约束 / 边界情况
 
