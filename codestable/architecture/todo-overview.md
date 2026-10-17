@@ -2,7 +2,7 @@
 doc_type: architecture
 slug: todo-overview
 scope: feature/todo/ 的待办数据模型、本地 JSON 落盘、三段列表与增删改交互
-summary: todo 是一个纯本地的待办清单（作业 / 事务），条目 = 标题 + 可选科目 + 截止日，落在 filesDir/todo_items.json；列表分「今天（含逾期）/ 以后 / 已完成」三段，挂在底栏第 3 个 tab；不引 Room、不做通知、不接任何服务端
+summary: todo 是一个纯本地的待办清单（作业 / 事务），条目 = 标题 + 可选科目 + 截止日，落在 filesDir/todo_items.json；列表分「今天（含逾期）/ 以后 / 已完成」三段，勾选就地划掉、不重排，删除走左滑；挂在底栏第 3 个 tab，不引 Room、不做通知、不接任何服务端
 status: current
 last_reviewed: 2026-10-17
 tags: [todo, task, homework, local-storage, json, bottom-tab]
@@ -47,21 +47,25 @@ depends_on: [home-overview, designsystem-overview]
 
 ### 2.3 三段划分是纯函数
 
-锚点：`feature/todo/domain/TodoModels.kt:36-46`
+锚点：`feature/todo/domain/TodoModels.kt:43-58`
 
-`todoSections(items, today)` 一次算出三段：未完成里"截止日 ≤ 今天"进今天段（先按截止日、再按添加顺序，所以逾期自然排在最前），"截止日 > 今天"进以后段，已完成按 `doneAt` 倒序。空段整段不渲染。
+`todoSections(items, today, pinnedDone)` 一次算出三段：未完成里"截止日 ≤ 今天"进今天段（先按截止日、再按添加顺序，所以逾期自然排在最前），"截止日 > 今天"进以后段，已完成按 `doneAt` 倒序。空段整段不渲染。
+
+`pinnedDone` 是"这次停留期间刚勾完"的那几条：它们虽然已完成，仍然留在原来那一段里（划掉显示），不跳到已完成段 —— 勾一下就把卡片挪到页面底部，等于在用户手指底下重排了整个列表。列表离开组合时（切走 tab、退出页面）由 `settleCompleted()` 清掉这份钉住，下次进来才归档。ViewModel 挂在 HOME 这条导航记录上、切 tab 不会销毁，所以钉住状态必须显式清而不是靠 VM 生命周期。
 
 逾期不单独成段是刻意的：它就是"今天还没做完"里最该先看到的那几条，拆出去反而要用户在两段之间来回找。
 
-### 2.4 勾选态自己画
+### 2.4 勾选态与划掉动画
 
-锚点：`feature/todo/ui/TodoScreen.kt:345-369`
+锚点：`feature/todo/ui/TodoScreen.kt:388-414`（圆点）、`feature/todo/ui/TodoScreen.kt:350-386`（划掉）
 
-设计系统里没有 Checkbox，行首那颗 22dp 圆点就是勾选态：未勾是沙色描边空心圆，勾上是鼠尾草底 + 对勾，标题同时加删除线并褪到 `LxInkFaint`。整行可点（进编辑），圆点单独可点（切换完成），两者互不干扰。
+设计系统里没有 Checkbox，行首那颗 22dp 圆点就是勾选态：未勾是沙色描边空心圆，勾上是鼠尾草底 + 对勾。整行可点（进编辑），圆点单独可点（切换完成），两者互不干扰。
+
+划掉是 `drawWithContent` 画出来的，不是 `TextDecoration.LineThrough` —— 后者只能整条瞬间出现，画出来的这条用 `animateFloatAsState` 从左往右长出来（260ms），取消勾选时倒着收回去；按 `TextLayoutResult` 逐行画，两行标题不会被一条长线横穿。文字颜色同时从墨色过渡到 `LxInkFaint`。
 
 ### 2.5 新增与编辑共用一个 BottomSheet
 
-锚点：`feature/todo/ui/TodoScreen.kt:372-459`
+锚点：`feature/todo/ui/TodoScreen.kt:416-505`
 
 `ModalBottomSheet` 里放标题、科目、截止日期与「保存」，编辑已有条目时多一个「删除」。**没有「取消」按钮** —— 下滑、点页面外都走 `onDismissRequest → cancelEdit`，没点保存就等于没写盘。
 
@@ -69,7 +73,7 @@ depends_on: [home-overview, designsystem-overview]
 
 ### 2.6 删除走左滑
 
-锚点：`feature/todo/ui/TodoScreen.kt:259-342`
+锚点：`feature/todo/ui/TodoScreen.kt:270-348`
 
 列表行向左拖出 88dp，底下露出玫瑰色「删除」；拖过一半吸附住，没拖到一半松手自己弹回。滑开状态下点卡片只是把它收回去，不会顺手把编辑页弹出来。
 
@@ -82,10 +86,10 @@ depends_on: [home-overview, designsystem-overview]
 | 类型 | 含义 | 定义位置 |
 |---|---|---|
 | `TodoItem` | id / title / subject / dueDate / createdAtMillis / done / doneAt | `TodoModels.kt:11-19` |
-| `TodoSections` | today / later / done 三段 + `openCount` / `isEmpty` | `TodoModels.kt:27-34` |
+| `TodoSections` | today / later / done 三段 + `openCount`（不含钉住的） / `isEmpty` | `TodoModels.kt:27-39` |
 | `TodoEntity` | 落盘形态，日期一律 ISO 字符串 | `TodoStore.kt:108-116` |
 | `TodoDraft` | 编辑中的表单，id 为 null 表示新增 | `TodoViewModel.kt:20-25` |
-| `TodoUiState` | items / today / sections / draft / error | `TodoViewModel.kt:27-33` |
+| `TodoUiState` | items / today / pinnedDone / sections / draft / error | `TodoViewModel.kt:27-34` |
 
 ### 3.2 状态所有权
 
@@ -99,17 +103,19 @@ depends_on: [home-overview, designsystem-overview]
 - **日期存 ISO 字符串而不是让 Gson 反射 `LocalDate`** —— Gson 会把 `LocalDate` 的内部字段写进文件，换 JDK 版本就解不回来。`TodoEntity` 因此存在。来源：`feature/todo/data/TodoStore.kt:105-118`。
 - **坏日期整行丢弃而不是兜底成今天** —— 半条待办会在勾选、删除时以 null 字段回来咬人，不如直接不显示。来源：`feature/todo/data/TodoStore.kt:129-141`。
 - **退出登录不清待办** —— 与早/晚自习相反：那些跟着班级走，而待办是用户自己的内容，且首页那条"重新登录"路径会顺手清 session / profile / 早自习设置，把待办一起清掉等于让用户为了挤下线而丢清单。
+- **勾选不重排** —— 刚勾完的那条钉在原段落里划掉显示，离开页面才归到已完成段；位置突变比多一步滚动更烦人。来源：`feature/todo/ui/TodoViewModel.kt:98-110`、`feature/todo/ui/TodoScreen.kt:108-111`。
 - **不做到期提醒** —— 项目里没有任何定时通知基础设施（只有进程内 60s 循环的课程胶囊），做提醒要引 WorkManager + 通知权限流程，那是另一个功能的量级。
 
 ## 5. 代码锚点
 
-- `feature/todo/domain/TodoModels.kt:11-86` — 模型与全部纯函数（分段、逾期、日期文案、清洗）
+- `feature/todo/domain/TodoModels.kt:11-97` — 模型与全部纯函数（分段、钉住、逾期、日期文案、清洗）
 - `feature/todo/data/TodoStore.kt:29-103` — 单例存储：内存 StateFlow + JSON 文件 + Mutex
 - `feature/todo/data/TodoStore.kt:105-152` — 落盘形态与编解码（internal 纯函数，JVM 可测）
-- `feature/todo/ui/TodoViewModel.kt:36-114` — 草稿、校验、写操作委托
-- `feature/todo/ui/TodoScreen.kt:92-201` — 三段列表 + 空态 + FAB
-- `feature/todo/ui/TodoScreen.kt:259-342` — 左滑露删除的列表行
-- `feature/todo/ui/TodoScreen.kt:372-485` — 编辑 BottomSheet 与日期选择器
+- `feature/todo/ui/TodoViewModel.kt:36-132` — 草稿、校验、写操作委托、刚勾完的钉住与归档
+- `feature/todo/ui/TodoScreen.kt:98-212` — 三段列表 + 空态 + FAB + 离开时归档
+- `feature/todo/ui/TodoScreen.kt:270-348` — 左滑露删除的列表行
+- `feature/todo/ui/TodoScreen.kt:350-386` — 逐行划掉动画
+- `feature/todo/ui/TodoScreen.kt:416-529` — 编辑 BottomSheet 与日期选择器
 - `feature/home/ui/HomeScreen.kt:56-61` — 底栏四 tab 定义
 - `app/src/test/java/com/lightxin/feature/todo/domain/TodoModelsTest.kt` — 分段、排序、逾期文案、清洗
 - `app/src/test/java/com/lightxin/feature/todo/data/TodoStoreTest.kt` — JSON 往返、坏数据降级
@@ -118,6 +124,8 @@ depends_on: [home-overview, designsystem-overview]
 
 - **纯本地，换机 / 卸载即丢** —— 没有任何同步与备份；1.3.x 的发布方式（换签名 keystore 需卸载重装）会连带清掉这份清单。
 - **`today` 在每次数据变化时重算** —— 列表跨零点继续开着时，分段不会自己刷新，直到下一次增删改。待办场景下可接受。
+- **同一条待办在"刚勾完"和"下次进来"位置不同** —— 钉住只在本次停留期间生效，切走 tab 再回来它就跑到已完成段。这是"不在用户手指底下重排列表"换来的取舍，不是 bug。
+- **划掉动画依赖 `TextLayoutResult`** —— 文字还没测量完时（首帧）`layout` 为 null，此时按单行、整宽画；列表项本来就短，看不出来。
 - **AI 课堂作业不自动进来** —— `feature/aiclass` 有自己的作业列表与刷新逻辑，灌进待办会带来重复条目和同步时机两个问题；先让用户手写，形态验证过再谈联动。
 - **DatePicker 的星期与月份名跟随系统语言** —— 我们自己写的文案恒为中文，框架日历在英文 ROM 上会露出英文，不是代码问题。UTC 毫秒与 `LocalDate` 的换算固定在 `ZoneOffset.UTC` 两侧，跨时区不会差一天。
 

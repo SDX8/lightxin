@@ -1,6 +1,8 @@
 package com.lightxin.feature.todo.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +40,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,11 +49,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,6 +105,10 @@ fun TodoScreen(
     var pendingDelete by remember { mutableStateOf<TodoItem?>(null) }
     // 左滑之后还要再点一下删除，已经是两道有意的动作，不再叠第三层确认
     val delete: (TodoItem) -> Unit = { item -> viewModel.delete(item.id) }
+    // 切走 tab 时组合被销毁，此刻才把"刚勾完"的条目归到已完成段（ViewModel 挂在 HOME 上，不会跟着销毁）
+    DisposableEffect(Unit) {
+        onDispose { viewModel.settleCompleted() }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -316,14 +326,7 @@ private fun TodoRow(
                 DoneToggle(checked = item.done, onToggle = { onToggle(item.id, !item.done) })
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title,
-                        fontFamily = NewsreaderDisplay,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 17.sp,
-                        color = if (item.done) LxInkFaint else LxInk,
-                        textDecoration = if (item.done) TextDecoration.LineThrough else null,
-                    )
+                    StrikethroughText(text = item.title, struck = item.done)
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = todoMetaLine(item, today),
@@ -338,6 +341,47 @@ private fun TodoRow(
             }
         }
     }
+}
+
+/**
+ * 划掉是画出来的，不是 `TextDecoration.LineThrough` —— 后者只能整条瞬间出现，
+ * 这里要的是勾选那一下从左往右长出来。按行画，两行标题也不会被一条长线横穿。
+ */
+@Composable
+private fun StrikethroughText(text: String, struck: Boolean) {
+    val progress by animateFloatAsState(if (struck) 1f else 0f, tween(260), label = "strike")
+    val ink by animateColorAsState(if (struck) LxInkFaint else LxInk, tween(260), label = "strike-ink")
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    Text(
+        text = text,
+        modifier = Modifier.drawWithContent {
+            drawContent()
+            if (progress > 0f) {
+                val result = layout
+                repeat(result?.lineCount ?: 1) { line ->
+                    val top = result?.getLineTop(line) ?: 0f
+                    val bottom = result?.getLineBottom(line) ?: size.height
+                    val left = result?.getLineLeft(line) ?: 0f
+                    val right = result?.getLineRight(line) ?: size.width
+                    val y = (top + bottom) / 2f
+                    drawLine(
+                        color = ink,
+                        start = Offset(left, y),
+                        end = Offset(left + (right - left) * progress, y),
+                        strokeWidth = 1.5.dp.toPx(),
+                    )
+                }
+            }
+        },
+        onTextLayout = { layout = it },
+        fontFamily = NewsreaderDisplay,
+        fontWeight = FontWeight.Medium,
+        fontSize = 17.sp,
+        color = ink,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /** 设计系统里没有 Checkbox，行内这一个圆点就是勾选态 */

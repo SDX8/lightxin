@@ -29,17 +29,28 @@ data class TodoSections(
     val later: List<TodoItem>,
     val done: List<TodoItem>,
 ) {
-    val openCount: Int get() = today.size + later.size
+    /** 刚勾完、还留在原处的那几条不算"没做完" */
+    val openCount: Int get() = (today + later).count { !it.done }
     val isEmpty: Boolean get() = today.isEmpty() && later.isEmpty() && done.isEmpty()
 }
 
-fun todoSections(items: List<TodoItem>, today: LocalDate): TodoSections {
-    val open = items.filterNot { it.done }
+/**
+ * 分三段。
+ *
+ * [pinnedDone] 里的条目虽然已完成，但仍留在它原来那一段里（今天 / 以后）——
+ * 勾一下就把卡片挪到页面底部，等于在用户手指底下把列表重排了。
+ */
+fun todoSections(
+    items: List<TodoItem>,
+    today: LocalDate,
+    pinnedDone: Set<String> = emptySet(),
+): TodoSections {
+    val inPlace = items.filter { !it.done || it.id in pinnedDone }
     val byDueThenAdded = compareBy<TodoItem>({ it.dueDate }, { it.createdAtMillis })
     return TodoSections(
-        today = open.filter { !it.dueDate.isAfter(today) }.sortedWith(byDueThenAdded),
-        later = open.filter { it.dueDate.isAfter(today) }.sortedWith(byDueThenAdded),
-        done = items.filter { it.done }
+        today = inPlace.filter { !it.dueDate.isAfter(today) }.sortedWith(byDueThenAdded),
+        later = inPlace.filter { it.dueDate.isAfter(today) }.sortedWith(byDueThenAdded),
+        done = items.filter { it.done && it.id !in pinnedDone }
             .sortedWith(compareByDescending<TodoItem> { it.doneAt ?: it.dueDate }
                 .thenBy { it.createdAtMillis }),
     )

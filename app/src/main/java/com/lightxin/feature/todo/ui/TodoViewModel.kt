@@ -27,6 +27,7 @@ data class TodoDraft(
 data class TodoUiState(
     val items: List<TodoItem> = emptyList(),
     val today: LocalDate = LocalDate.now(),
+    val pinnedDone: Set<String> = emptySet(),
     val sections: TodoSections = TodoSections(emptyList(), emptyList(), emptyList()),
     val draft: TodoDraft? = null,
     val error: String? = null,
@@ -43,8 +44,7 @@ class TodoViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             store.items.collect { items ->
-                val today = LocalDate.now()
-                _uiState.update { it.copy(items = items, today = today, sections = todoSections(items, today)) }
+                recompute { it.copy(items = items, today = LocalDate.now()) }
             }
         }
     }
@@ -93,8 +93,19 @@ class TodoViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 勾完先钉在原来那一段里，别在用户手指底下把列表重排。
+     *
+     * ViewModel 挂在 HOME 这条导航记录上，切 tab 不会销毁它，所以钉住的状态
+     * 由 [settleCompleted] 在待办页离开组合时清掉 —— 也就是"下次再进这个 tab 才归档"。
+     */
     fun setDone(id: String, done: Boolean) {
+        recompute { it.copy(pinnedDone = if (done) it.pinnedDone + id else it.pinnedDone - id) }
         viewModelScope.launch { store.setDone(id, done) }
+    }
+
+    fun settleCompleted() {
+        recompute { it.copy(pinnedDone = emptySet()) }
     }
 
     fun delete(id: String) {
@@ -103,6 +114,13 @@ class TodoViewModel @Inject constructor(
 
     fun clearDone() {
         viewModelScope.launch { store.clearDone() }
+    }
+
+    private fun recompute(block: (TodoUiState) -> TodoUiState) {
+        _uiState.update { state ->
+            val next = block(state)
+            next.copy(sections = todoSections(next.items, next.today, next.pinnedDone))
+        }
     }
 
     private fun updateDraft(block: (TodoDraft) -> TodoDraft) {
