@@ -57,7 +57,7 @@ depends_on: [home-overview, designsystem-overview]
 
 ### 2.4 勾选态与划掉动画
 
-锚点：`feature/todo/ui/TodoScreen.kt:388-414`（圆点）、`feature/todo/ui/TodoScreen.kt:350-386`（划掉）
+锚点：`feature/todo/ui/TodoScreen.kt:411-436`（圆点）、`feature/todo/ui/TodoScreen.kt:373-409`（划掉）
 
 设计系统里没有 Checkbox，行首那颗 22dp 圆点就是勾选态：未勾是沙色描边空心圆，勾上是鼠尾草底 + 对勾。整行可点（进编辑），圆点单独可点（切换完成），两者互不干扰。
 
@@ -65,7 +65,7 @@ depends_on: [home-overview, designsystem-overview]
 
 ### 2.5 新增与编辑共用一个 BottomSheet
 
-锚点：`feature/todo/ui/TodoScreen.kt:416-505`
+锚点：`feature/todo/ui/TodoScreen.kt:438-527`
 
 `ModalBottomSheet` 里放标题、科目、截止日期与「保存」，编辑已有条目时多一个「删除」。**没有「取消」按钮** —— 下滑、点页面外都走 `onDismissRequest → cancelEdit`，没点保存就等于没写盘。
 
@@ -73,7 +73,7 @@ depends_on: [home-overview, designsystem-overview]
 
 ### 2.6 删除走左滑
 
-锚点：`feature/todo/ui/TodoScreen.kt:270-348`
+锚点：`feature/todo/ui/TodoScreen.kt:291-371`
 
 列表行向左拖出 88dp，底下露出玫瑰色「删除」；拖过一半吸附住，没拖到一半松手自己弹回。滑开状态下点卡片只是把它收回去，不会顺手把编辑页弹出来。
 
@@ -103,6 +103,7 @@ depends_on: [home-overview, designsystem-overview]
 - **日期存 ISO 字符串而不是让 Gson 反射 `LocalDate`** —— Gson 会把 `LocalDate` 的内部字段写进文件，换 JDK 版本就解不回来。`TodoEntity` 因此存在。来源：`feature/todo/data/TodoStore.kt:105-118`。
 - **坏日期整行丢弃而不是兜底成今天** —— 半条待办会在勾选、删除时以 null 字段回来咬人，不如直接不显示。来源：`feature/todo/data/TodoStore.kt:129-141`。
 - **退出登录不清待办** —— 与早/晚自习相反：那些跟着班级走，而待办是用户自己的内容，且首页那条"重新登录"路径会顺手清 session / profile / 早自习设置，把待办一起清掉等于让用户为了挤下线而丢清单。
+- **列表用 LazyColumn、条目 key 用 id** —— 取消勾选时卡片要从「已完成」搬回「今天 / 以后」，只有稳定 key 能让 `Modifier.animateItem()` 认出"还是那一条"；普通 `Column` 里整段重建，卡片就是瞬移。段落标题与条目共用一个扁平 key 空间（`section-今天` 与 UUID 不会撞）。来源：`feature/todo/ui/TodoScreen.kt:118-163,248-278`。
 - **勾选不重排** —— 刚勾完的那条钉在原段落里划掉显示，离开页面才归到已完成段；位置突变比多一步滚动更烦人。来源：`feature/todo/ui/TodoViewModel.kt:98-110`、`feature/todo/ui/TodoScreen.kt:108-111`。
 - **不做到期提醒** —— 项目里没有任何定时通知基础设施（只有进程内 60s 循环的课程胶囊），做提醒要引 WorkManager + 通知权限流程，那是另一个功能的量级。
 
@@ -112,10 +113,11 @@ depends_on: [home-overview, designsystem-overview]
 - `feature/todo/data/TodoStore.kt:29-103` — 单例存储：内存 StateFlow + JSON 文件 + Mutex
 - `feature/todo/data/TodoStore.kt:105-152` — 落盘形态与编解码（internal 纯函数，JVM 可测）
 - `feature/todo/ui/TodoViewModel.kt:36-132` — 草稿、校验、写操作委托、刚勾完的钉住与归档
-- `feature/todo/ui/TodoScreen.kt:98-212` — 三段列表 + 空态 + FAB + 离开时归档
-- `feature/todo/ui/TodoScreen.kt:270-348` — 左滑露删除的列表行
-- `feature/todo/ui/TodoScreen.kt:350-386` — 逐行划掉动画
-- `feature/todo/ui/TodoScreen.kt:416-529` — 编辑 BottomSheet 与日期选择器
+- `feature/todo/ui/TodoScreen.kt:102-215` — LazyColumn 三段列表 + 空态 + FAB + 离开时归档
+- `feature/todo/ui/TodoScreen.kt:248-278` — 段落与条目的 `items` 发射（稳定 key 是位移动画的前提）
+- `feature/todo/ui/TodoScreen.kt:291-371` — 左滑露删除的列表行
+- `feature/todo/ui/TodoScreen.kt:373-409` — 逐行划掉动画
+- `feature/todo/ui/TodoScreen.kt:438-551` — 编辑 BottomSheet 与日期选择器
 - `feature/home/ui/HomeScreen.kt:56-61` — 底栏四 tab 定义
 - `app/src/test/java/com/lightxin/feature/todo/domain/TodoModelsTest.kt` — 分段、排序、逾期文案、清洗
 - `app/src/test/java/com/lightxin/feature/todo/data/TodoStoreTest.kt` — JSON 往返、坏数据降级

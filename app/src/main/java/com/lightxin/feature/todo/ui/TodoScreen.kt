@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -111,34 +115,39 @@ fun TodoScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(top = 20.dp, bottom = 96.dp),
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            TodoHeader(sections, today)
-            Spacer(modifier = Modifier.height(18.dp))
-
+            item(key = "header") {
+                Column {
+                    TodoHeader(sections, today)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
             if (sections.isEmpty) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 48.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    LxEmptyHint(message = "还没有待办，点右下角记一条")
+                item(key = "empty") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        LxEmptyHint(message = "还没有待办，点右下角记一条")
+                    }
                 }
             } else {
-                TodoSection("今天", sections.today, today, viewModel::startEdit, viewModel::setDone, delete)
-                TodoSection("以后", sections.later, today, viewModel::startEdit, viewModel::setDone, delete)
-                if (sections.done.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        SectionLabel(text = "已完成 ${sections.done.size} 条", modifier = Modifier.weight(1f))
+                todoSection("今天", sections.today, today, viewModel::startEdit, viewModel::setDone, delete)
+                todoSection("以后", sections.later, today, viewModel::startEdit, viewModel::setDone, delete)
+                todoSection(
+                    title = "已完成",
+                    items = sections.done,
+                    today = today,
+                    onEdit = viewModel::startEdit,
+                    onToggle = viewModel::setDone,
+                    onDelete = delete,
+                    actions = {
                         Text(
                             text = "清空",
                             fontSize = 13.sp,
@@ -148,14 +157,8 @@ fun TodoScreen(
                                 .clickable(onClick = viewModel::clearDone)
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                         )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        sections.done.forEach { item ->
-                            TodoRow(item, today, viewModel::startEdit, viewModel::setDone, delete)
-                        }
-                    }
-                }
+                    },
+                )
             }
         }
 
@@ -235,24 +238,42 @@ private fun TodoHeader(sections: TodoSections, today: LocalDate) {
     }
 }
 
-@Composable
-private fun TodoSection(
+/**
+ * 一段（标题 + 若干条目）。
+ *
+ * 走 LazyColumn 而不是普通 Column，是为了给每条一个稳定 key：
+ * 取消勾选时它从「已完成」搬回「今天 / 以后」，`animateItem` 才有东西可以搬，
+ * 否则整段列表重建，卡片是瞬移过去的。
+ */
+private fun LazyListScope.todoSection(
     title: String,
     items: List<TodoItem>,
     today: LocalDate,
     onEdit: (TodoItem) -> Unit,
     onToggle: (String, Boolean) -> Unit,
     onDelete: (TodoItem) -> Unit,
+    actions: (@Composable () -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
-    SectionLabel(text = "$title ${items.size} 条")
-    Spacer(modifier = Modifier.height(10.dp))
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items.forEach { item ->
-            TodoRow(item = item, today = today, onEdit = onEdit, onToggle = onToggle, onDelete = onDelete)
+    item(key = "section-$title") {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionLabel(text = "$title ${items.size} 条", modifier = Modifier.weight(1f))
+            actions?.invoke()
         }
     }
-    Spacer(modifier = Modifier.height(22.dp))
+    items(items, key = { it.id }) { item ->
+        TodoRow(
+            item = item,
+            today = today,
+            onEdit = onEdit,
+            onToggle = onToggle,
+            onDelete = onDelete,
+            modifier = Modifier.animateItem(),
+        )
+    }
 }
 
 @Composable
@@ -273,6 +294,7 @@ private fun TodoRow(
     onEdit: (TodoItem) -> Unit,
     onToggle: (String, Boolean) -> Unit,
     onDelete: (TodoItem) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val revealPx = with(LocalDensity.current) { DELETE_REVEAL_WIDTH.toPx() }
     val slide = remember { Animatable(0f) }
@@ -283,7 +305,7 @@ private fun TodoRow(
         scope.launch { slide.animateTo(target, tween(180)) }
     }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = modifier.fillMaxWidth()) {
         Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
             Box(
                 modifier = Modifier
