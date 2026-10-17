@@ -55,17 +55,25 @@ depends_on: [home-overview, designsystem-overview]
 
 ### 2.4 勾选态自己画
 
-锚点：`feature/todo/ui/TodoScreen.kt:286-310`
+锚点：`feature/todo/ui/TodoScreen.kt:345-369`
 
 设计系统里没有 Checkbox，行首那颗 22dp 圆点就是勾选态：未勾是沙色描边空心圆，勾上是鼠尾草底 + 对勾，标题同时加删除线并褪到 `LxInkFaint`。整行可点（进编辑），圆点单独可点（切换完成），两者互不干扰。
 
 ### 2.5 新增与编辑共用一个 BottomSheet
 
-锚点：`feature/todo/ui/TodoScreen.kt:313-411`
+锚点：`feature/todo/ui/TodoScreen.kt:372-459`
 
-`ModalBottomSheet` 里放标题、科目、截止日期与保存 / 删除 / 取消。截止日给「今天」「明天」两颗快捷 chip + 一颗「选日期」打开 Material3 `DatePickerDialog`，选中的日期由 chip 行下面那行小字念出来 —— 不把日期直接写进第三颗 chip，否则默认选"今天"时会出现两颗同名 chip。
+`ModalBottomSheet` 里放标题、科目、截止日期与「保存」，编辑已有条目时多一个「删除」。**没有「取消」按钮** —— 下滑、点页面外都走 `onDismissRequest → cancelEdit`，没点保存就等于没写盘。
 
-删除走二次确认弹窗（`LxDialog` + `Destructive`），文案直说"不会留在已完成里"。
+截止日给「今天」「明天」两颗快捷 chip + 一颗「选日期」打开 Material3 `DatePickerDialog`，选中的日期由 chip 行下面那行小字念出来 —— 不把日期直接写进第三颗 chip，否则默认选"今天"时会出现两颗同名 chip。
+
+### 2.6 删除走左滑
+
+锚点：`feature/todo/ui/TodoScreen.kt:259-342`
+
+列表行向左拖出 88dp，底下露出玫瑰色「删除」；拖过一半吸附住，没拖到一半松手自己弹回。滑开状态下点卡片只是把它收回去，不会顺手把编辑页弹出来。
+
+滑开之后还要再点一下删除，已经是两道有意的动作，所以这条路**不再叠二次确认**；编辑页里那个「删除」前面没有滑动手势，仍保留 `LxDialog` 二次确认。
 
 ## 3. 数据与状态
 
@@ -99,8 +107,9 @@ depends_on: [home-overview, designsystem-overview]
 - `feature/todo/data/TodoStore.kt:29-103` — 单例存储：内存 StateFlow + JSON 文件 + Mutex
 - `feature/todo/data/TodoStore.kt:105-152` — 落盘形态与编解码（internal 纯函数，JVM 可测）
 - `feature/todo/ui/TodoViewModel.kt:36-114` — 草稿、校验、写操作委托
-- `feature/todo/ui/TodoScreen.kt:78-186` — 三段列表 + 空态 + FAB
-- `feature/todo/ui/TodoScreen.kt:313-437` — 编辑 BottomSheet 与日期选择器
+- `feature/todo/ui/TodoScreen.kt:92-201` — 三段列表 + 空态 + FAB
+- `feature/todo/ui/TodoScreen.kt:259-342` — 左滑露删除的列表行
+- `feature/todo/ui/TodoScreen.kt:372-485` — 编辑 BottomSheet 与日期选择器
 - `feature/home/ui/HomeScreen.kt:56-61` — 底栏四 tab 定义
 - `app/src/test/java/com/lightxin/feature/todo/domain/TodoModelsTest.kt` — 分段、排序、逾期文案、清洗
 - `app/src/test/java/com/lightxin/feature/todo/data/TodoStoreTest.kt` — JSON 往返、坏数据降级
