@@ -49,6 +49,29 @@ class TodoModelsTest {
     }
 
     @Test
+    fun `a just-checked item stays where it was until the list settles`() {
+        val items = listOf(
+            todo(id = "keep", title = "刚勾掉的", due = saturday, done = true, doneAt = saturday),
+            todo(id = "next", due = saturday.plusDays(1)),
+            todo(id = "archived", due = saturday, done = true, doneAt = saturday),
+        )
+
+        val pinned = todoSections(items, today = saturday, pinnedDone = setOf("keep"))
+        val settled = todoSections(items, today = saturday)
+
+        // 钉住时它还在今天段里，已完成段只剩早就做完的那条；只有没做完的算进 openCount
+        assertEquals(listOf("keep"), pinned.today.map { it.id })
+        assertEquals(listOf("archived"), pinned.done.map { it.id })
+        assertEquals(1, pinned.openCount)
+
+        // 松开之后一起归档：今天段空了，两条按完成时间倒序（同一天则按添加顺序）
+        assertTrue(settled.today.isEmpty())
+        assertEquals(listOf("next"), settled.later.map { it.id })
+        assertEquals(listOf("keep", "archived"), settled.done.map { it.id })
+        assertEquals(1, settled.openCount)
+    }
+
+    @Test
     fun `same-day items keep the order they were added in`() {
         val sections = todoSections(
             listOf(
