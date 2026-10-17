@@ -1,16 +1,21 @@
 package com.lightxin.feature.todo.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,13 +41,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -72,6 +81,11 @@ import com.lightxin.feature.todo.domain.todoMetaLine
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
+
+/** 左滑露出的删除键宽度，滑过一半就自己吸住 */
+private val DELETE_REVEAL_WIDTH = 88.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +97,8 @@ fun TodoScreen(
     val sections = uiState.sections
     val today = uiState.today
     var pendingDelete by remember { mutableStateOf<TodoItem?>(null) }
+    // 左滑之后还要再点一下删除，已经是两道有意的动作，不再叠第三层确认
+    val delete: (TodoItem) -> Unit = { item -> viewModel.delete(item.id) }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -105,8 +121,8 @@ fun TodoScreen(
                     LxEmptyHint(message = "还没有待办，点右下角记一条")
                 }
             } else {
-                TodoSection("今天", sections.today, today, viewModel::startEdit, viewModel::setDone)
-                TodoSection("以后", sections.later, today, viewModel::startEdit, viewModel::setDone)
+                TodoSection("今天", sections.today, today, viewModel::startEdit, viewModel::setDone, delete)
+                TodoSection("以后", sections.later, today, viewModel::startEdit, viewModel::setDone, delete)
                 if (sections.done.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -126,7 +142,7 @@ fun TodoScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         sections.done.forEach { item ->
-                            TodoRow(item, today, viewModel::startEdit, viewModel::setDone)
+                            TodoRow(item, today, viewModel::startEdit, viewModel::setDone, delete)
                         }
                     }
                 }
@@ -159,7 +175,6 @@ fun TodoScreen(
                 onSubjectChange = viewModel::onSubjectChange,
                 onDueDateChange = viewModel::onDueDateChange,
                 onSave = viewModel::save,
-                onCancel = viewModel::cancelEdit,
                 onDelete = {
                     draft.id?.let { id -> pendingDelete = uiState.items.firstOrNull { it.id == id } }
                     viewModel.cancelEdit()
@@ -217,13 +232,14 @@ private fun TodoSection(
     today: LocalDate,
     onEdit: (TodoItem) -> Unit,
     onToggle: (String, Boolean) -> Unit,
+    onDelete: (TodoItem) -> Unit,
 ) {
     if (items.isEmpty()) return
     SectionLabel(text = "$title ${items.size} 条")
     Spacer(modifier = Modifier.height(10.dp))
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items.forEach { item ->
-            TodoRow(item = item, today = today, onEdit = onEdit, onToggle = onToggle)
+            TodoRow(item = item, today = today, onEdit = onEdit, onToggle = onToggle, onDelete = onDelete)
         }
     }
     Spacer(modifier = Modifier.height(22.dp))
@@ -246,36 +262,79 @@ private fun TodoRow(
     today: LocalDate,
     onEdit: (TodoItem) -> Unit,
     onToggle: (String, Boolean) -> Unit,
+    onDelete: (TodoItem) -> Unit,
 ) {
+    val revealPx = with(LocalDensity.current) { DELETE_REVEAL_WIDTH.toPx() }
+    val slide = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
     val overdue = isOverdue(item, today)
-    LxCard(onClick = { onEdit(item) }) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            DoneToggle(checked = item.done, onToggle = { onToggle(item.id, !item.done) })
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.title,
-                    fontFamily = NewsreaderDisplay,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 17.sp,
-                    color = if (item.done) LxInkFaint else LxInk,
-                    textDecoration = if (item.done) TextDecoration.LineThrough else null,
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = todoMetaLine(item, today),
-                    fontSize = 12.sp,
-                    color = when {
-                        item.done -> LxInkFaint
-                        overdue -> LxRose
-                        else -> LxInkMuted
+
+    fun settleTo(target: Float) {
+        scope.launch { slide.animateTo(target, tween(180)) }
+    }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(DELETE_REVEAL_WIDTH)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(LxRose)
+                    .clickable {
+                        settleTo(0f)
+                        onDelete(item)
                     },
-                )
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "删除", fontSize = 14.sp, color = Color.White)
+            }
+        }
+
+        LxCard(
+            modifier = Modifier
+                .offset { IntOffset(slide.value.roundToInt(), 0) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = { settleTo(if (slide.value < -revealPx / 2) -revealPx else 0f) },
+                        onDragCancel = { settleTo(0f) },
+                    ) { _, dragAmount ->
+                        scope.launch { slide.snapTo((slide.value + dragAmount).coerceIn(-revealPx, 0f)) }
+                    }
+                },
+            onClick = {
+                // 已经滑开了，第一下是收回去，不该顺手把编辑页也弹出来
+                if (slide.value < 0f) settleTo(0f) else onEdit(item)
+            },
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DoneToggle(checked = item.done, onToggle = { onToggle(item.id, !item.done) })
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        fontFamily = NewsreaderDisplay,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 17.sp,
+                        color = if (item.done) LxInkFaint else LxInk,
+                        textDecoration = if (item.done) TextDecoration.LineThrough else null,
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = todoMetaLine(item, today),
+                        fontSize = 12.sp,
+                        color = when {
+                            item.done -> LxInkFaint
+                            overdue -> LxRose
+                            else -> LxInkMuted
+                        },
+                    )
+                }
             }
         }
     }
@@ -318,7 +377,6 @@ private fun TodoEditor(
     onSubjectChange: (String) -> Unit,
     onDueDateChange: (LocalDate) -> Unit,
     onSave: () -> Unit,
-    onCancel: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var showPicker by remember { mutableStateOf(false) }
@@ -374,25 +432,15 @@ private fun TodoEditor(
 
         LxButton(text = "保存", onClick = onSave)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (draft.id != null) {
-                Text(
-                    text = "删除",
-                    fontSize = 14.sp,
-                    color = LxRose,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onDelete)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-            }
+        // 没有"取消"：下滑或点页面外就是取消
+        if (draft.id != null) {
             Text(
-                text = "取消",
+                text = "删除",
                 fontSize = 14.sp,
-                color = LxInkMuted,
+                color = LxRose,
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onCancel)
+                    .clickable(onClick = onDelete)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
