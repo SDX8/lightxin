@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
@@ -42,6 +43,7 @@ import com.lightxin.core.designsystem.theme.LxInkMuted
 import com.lightxin.core.designsystem.theme.LxParchment
 import com.lightxin.core.designsystem.theme.LxTerra
 import com.lightxin.feature.schedule.ui.ScheduleScreen
+import com.lightxin.feature.todo.ui.TodoScreen
 import com.lightxin.navigation.Routes
 
 private data class TabItem(
@@ -54,6 +56,7 @@ private data class TabItem(
 private val tabs = listOf(
     TabItem("首页", Icons.Outlined.Home),
     TabItem("课程表", Icons.Outlined.CalendarMonth),
+    TabItem("待办", Icons.Outlined.Checklist),
     TabItem("我的", Icons.Outlined.Person),
 )
 
@@ -120,7 +123,8 @@ fun HomeScreen(
                     onTabSelected = { selectedTab = it },
                 )
                 1 -> ScheduleScreen(modifier = Modifier.padding(padding))
-                2 -> ProfileScreen(
+                2 -> TodoScreen(modifier = Modifier.padding(padding))
+                3 -> ProfileScreen(
                     modifier = Modifier.padding(padding),
                     onNavigateCheckin = {
                         navController.navigate(Routes.CHECKIN_LIST) {
