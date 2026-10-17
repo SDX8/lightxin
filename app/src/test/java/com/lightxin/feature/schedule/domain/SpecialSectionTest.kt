@@ -65,13 +65,16 @@ class SpecialSectionTest {
     }
 
     @Test
-    fun `friday and saturday evenings are cut by the next-day-is-no-class rule`() {
-        // 周日要上（第二天周一上课），周五/周六晚上不上
-        assertEquals(setOf(1, 2, 3, 4, 7), EVENING_ALLOWED_DAYS)
+    fun `friday and saturday evenings are cut by the rule, and come back when it is switched off`() {
+        val wholeWeek = evening(days = (1..7).toSet())
 
-        val courses = specialSectionCourses(listOf(evening(days = (1..7).toSet())), today = wednesday)
+        val withRule = specialSectionCourses(listOf(wholeWeek), today = wednesday, skipFriSat = true)
+        val withoutRule = specialSectionCourses(listOf(wholeWeek), today = wednesday, skipFriSat = false)
 
-        assertEquals(listOf(1, 2, 3, 4, 7), courses.map { it.dayOfWeek })
+        // 周日晚上要上（第二天周一上课），所以规则只挡周五、周六
+        assertEquals(setOf(1, 2, 3, 4, 7), allowedDaysFor(SectionKind.EVENING))
+        assertEquals(listOf(1, 2, 3, 4, 7), withRule.map { it.dayOfWeek })
+        assertEquals((1..7).toList(), withoutRule.map { it.dayOfWeek })
     }
 
     @Test

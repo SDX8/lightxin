@@ -51,19 +51,22 @@ data class SpecialItem(
 /** 早安排只可能落在工作日 */
 val MORNING_ALLOWED_DAYS: Set<Int> = setOf(1, 2, 3, 4, 5)
 
+/** 晚自习整周都可能落在上面——周日晚上也要上，第二天周一上课 */
+val EVENING_ALL_DAYS: Set<Int> = (1..7).toSet()
+
 /**
- * 周五、周六晚上没有晚自习——第二天是周六或周日，不上课。
+ * 「周五、周六无晚自习」这条规则挡掉的日子：第二天是周六或周日，不上课。
  *
- * 这是"明天要上课才有晚自习"规则里能靠星期判断的那一半，写死在选择范围里，
- * 所以界面上压根选不出这两天。节假日那一半不引入节假日表，由用户用「今晚无晚自习」开关自己顶掉；
- * 周日晚上反而要上（第二天周一上课），所以周日在范围内。
+ * 它是那条开关的作用范围，不是写死的排除项——有的班周五晚上照样上自习，开关一关这两天就回到可选里。
+ * 节假日那一半从来不在这里，由用户用「今晚无晚自习」单日顶掉。
  */
 val EVENING_SKIPPED_DAYS: Set<Int> = setOf(5, 6)
 
-val EVENING_ALLOWED_DAYS: Set<Int> = (1..7).toSet() - EVENING_SKIPPED_DAYS
-
-fun allowedDaysFor(kind: SectionKind): Set<Int> =
-    if (kind == SectionKind.MORNING) MORNING_ALLOWED_DAYS else EVENING_ALLOWED_DAYS
+/** 某一种类下能勾选的星期；[skipFriSat] 就是设置页那条开关 */
+fun allowedDaysFor(kind: SectionKind, skipFriSat: Boolean = true): Set<Int> = when (kind) {
+    SectionKind.MORNING -> MORNING_ALLOWED_DAYS
+    SectionKind.EVENING -> if (skipFriSat) EVENING_ALL_DAYS - EVENING_SKIPPED_DAYS else EVENING_ALL_DAYS
+}
 
 /**
  * 展开成课表上的额外行。
@@ -75,11 +78,12 @@ fun specialSectionCourses(
     settings: List<SpecialItem>,
     today: LocalDate = LocalDate.now(),
     eveningPausedOn: LocalDate? = null,
+    skipFriSat: Boolean = true,
 ): List<Course> =
     settings.filter { it.name.isNotBlank() }
         .flatMap { setting ->
             val kind = setting.slot.kind
-            allowedDaysFor(kind)
+            allowedDaysFor(kind, skipFriSat)
                 .filter { it in setting.days }
                 .filterNot { kind == SectionKind.EVENING && eveningPausedOn == today && it == today.dayOfWeek.value }
                 .sorted()
@@ -100,8 +104,9 @@ fun specialSectionCourses(
 fun specialDayConflicts(
     candidate: SpecialItem,
     existing: List<SpecialItem>,
+    skipFriSat: Boolean = true,
 ): Map<Int, SpecialItem> {
-    val allowed = allowedDaysFor(candidate.slot.kind)
+    val allowed = allowedDaysFor(candidate.slot.kind, skipFriSat)
     return candidate.days.filter { it in allowed }.mapNotNull { day ->
         existing.firstOrNull { it.id != candidate.id && it.slot.kind == candidate.slot.kind && day in it.days }
             ?.let { day to it }
@@ -119,12 +124,13 @@ fun mergeSpecialSections(
     settings: List<SpecialItem>,
     today: LocalDate = LocalDate.now(),
     eveningPausedOn: LocalDate? = null,
+    skipFriSat: Boolean = true,
 ): List<Course> {
     if (settings.isEmpty()) return serverCourses
     val occupied = serverCourses.flatMap { course ->
         (course.startSection..course.endSection).map { row -> row to course.dayOfWeek }
     }.toSet()
-    return serverCourses + specialSectionCourses(settings, today, eveningPausedOn)
+    return serverCourses + specialSectionCourses(settings, today, eveningPausedOn, skipFriSat)
         .filterNot { (it.startSection to it.dayOfWeek) in occupied }
 }
 

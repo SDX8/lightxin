@@ -85,10 +85,18 @@ fun SpecialSectionSettingsScreen(
                 )
                 if (uiState.hasEvening) {
                     Spacer(modifier = Modifier.height(18.dp))
-                    EveningPauseRow(
-                        checked = uiState.eveningPausedToday,
-                        onToggle = { viewModel.setEveningPaused(!uiState.eveningPausedToday) },
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SwitchRow(
+                            title = "周五、周六无晚自习",
+                            checked = uiState.eveningSkipFriSat,
+                            onCheckedChange = viewModel::setEveningSkipFriSat,
+                        )
+                        SwitchRow(
+                            title = "今晚无晚自习",
+                            checked = uiState.eveningPausedToday,
+                            onCheckedChange = viewModel::setEveningPaused,
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(18.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -106,6 +114,7 @@ fun SpecialSectionSettingsScreen(
             } else {
                 SpecialItemForm(
                     draft = draft,
+                    allowedDays = allowedDaysFor(draft.slot.kind, uiState.eveningSkipFriSat),
                     error = uiState.error,
                     onNameChange = viewModel::onNameChange,
                     onRoomChange = viewModel::onRoomChange,
@@ -197,10 +206,10 @@ private fun SpecialItemList(
     }
 }
 
-/** 周五/周六已经由规则挡掉，这个开关只用来顶掉节假日那种例外 */
+/** 一行一个开关：整块卡片可点，不额外配解释性小字 */
 @Composable
-private fun EveningPauseRow(checked: Boolean, onToggle: () -> Unit) {
-    LxCard(onClick = onToggle) {
+private fun SwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    LxCard(onClick = { onCheckedChange(!checked) }) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -208,12 +217,12 @@ private fun EveningPauseRow(checked: Boolean, onToggle: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "今晚无晚自习",
+                text = title,
                 fontSize = 15.sp,
                 color = LxInk,
                 modifier = Modifier.weight(1f),
             )
-            Switch(checked = checked, onCheckedChange = { onToggle() })
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
         }
     }
 }
@@ -222,6 +231,7 @@ private fun EveningPauseRow(checked: Boolean, onToggle: () -> Unit) {
 @Composable
 private fun SpecialItemForm(
     draft: SpecialDraft,
+    allowedDays: Set<Int>,
     error: String?,
     onNameChange: (String) -> Unit,
     onRoomChange: (String) -> Unit,
@@ -273,8 +283,7 @@ private fun SpecialItemForm(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "星期", style = MaterialTheme.typography.labelMedium, color = LxInkMuted)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                val allowed = allowedDaysFor(draft.slot.kind)
-                DAY_NAMES.filterKeys { it in allowed }.forEach { (day, label) ->
+                DAY_NAMES.filterKeys { it in allowedDays }.forEach { (day, label) ->
                     LxChoiceChip(
                         text = label,
                         selected = day in draft.days,

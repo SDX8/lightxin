@@ -31,6 +31,7 @@ data class SpecialSectionUiState(
     val draft: SpecialDraft? = null,
     val error: String? = null,
     val eveningPausedToday: Boolean = false,
+    val eveningSkipFriSat: Boolean = true,
 ) {
     val hasEvening: Boolean get() = settings.any { it.slot.kind == SectionKind.EVENING }
 }
@@ -59,6 +60,13 @@ class SpecialSectionViewModel @Inject constructor(
         viewModelScope.launch {
             store.eveningPausedOn.collect { pausedOn ->
                 _uiState.update { it.copy(eveningPausedToday = pausedOn == LocalDate.now()) }
+            }
+        }
+        viewModelScope.launch {
+            store.eveningSkipFriSat.collect { skip ->
+                // 只改规则，不动已存的条目：开关开着时周五/周六画不出来，但用户勾过的日子
+                // 保留在设置里，开关一关就自己回来了
+                _uiState.update { it.copy(eveningSkipFriSat = skip) }
             }
         }
     }
@@ -119,7 +127,7 @@ class SpecialSectionViewModel @Inject constructor(
             room = draft.room.trim(),
             days = draft.days,
         )
-        val conflicts = specialDayConflicts(candidate, _uiState.value.settings)
+        val conflicts = specialDayConflicts(candidate, _uiState.value.settings, _uiState.value.eveningSkipFriSat)
         if (conflicts.isNotEmpty()) {
             _uiState.update { it.copy(error = specialConflictMessage(conflicts)) }
             return
@@ -137,6 +145,11 @@ class SpecialSectionViewModel @Inject constructor(
     /** 存的是"今天按下了"，不是布尔开关 —— 明天读到的日期不再是今天，它自己就恢复了 */
     fun setEveningPaused(paused: Boolean) {
         viewModelScope.launch { store.setEveningPaused(paused) }
+    }
+
+    /** 「周五、周六无晚自习」这条校历规则整条开关，默认开着 */
+    fun setEveningSkipFriSat(skip: Boolean) {
+        viewModelScope.launch { store.setEveningSkipFriSat(skip) }
     }
 
     private fun updateDraft(block: (SpecialDraft) -> SpecialDraft) {

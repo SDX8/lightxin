@@ -3,6 +3,7 @@ package com.lightxin.feature.schedule.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -38,6 +39,15 @@ class SpecialSectionStore @Inject constructor(
     /** 用户按下「今晚无晚自习」的那一天；过了一天它就不再匹配今天 */
     val eveningPausedOn: Flow<LocalDate?> = context.specialPrefs.data.map { prefs ->
         prefs[KEY_EVENING_PAUSED_ON]?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    }
+
+    /** "第二天要上课才有晚自习"这条校历规则，默认开着；有的班周五晚上照样上自习，可以整条关掉 */
+    val eveningSkipFriSat: Flow<Boolean> = context.specialPrefs.data.map { prefs ->
+        prefs[KEY_EVENING_SKIP_FRI_SAT] ?: true
+    }
+
+    suspend fun setEveningSkipFriSat(skip: Boolean) {
+        context.specialPrefs.edit { prefs -> prefs[KEY_EVENING_SKIP_FRI_SAT] = skip }
     }
 
     suspend fun setEveningPaused(paused: Boolean) {
@@ -83,6 +93,7 @@ class SpecialSectionStore @Inject constructor(
     private companion object {
         val KEY_SETTINGS = stringPreferencesKey("special_settings")
         val KEY_EVENING_PAUSED_ON = stringPreferencesKey("evening_paused_on")
+        val KEY_EVENING_SKIP_FRI_SAT = booleanPreferencesKey("evening_skip_fri_sat")
         val SETTINGS_TYPE = object : TypeToken<List<SpecialItem>>() {}.type
     }
 }

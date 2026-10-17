@@ -132,6 +132,7 @@ class ScheduleRepository @Inject constructor(
                 serverCourses = courses,
                 settings = specialStore.current(),
                 eveningPausedOn = specialStore.eveningPausedOn.first(),
+                skipFriSat = specialStore.eveningSkipFriSat.first(),
             ),
         )
 
