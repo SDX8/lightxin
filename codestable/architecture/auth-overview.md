@@ -98,7 +98,7 @@ depends_on: [login-overview, network-overview]
 
 - `LoginRepository : TokenRefresher`。锚点：`app/src/main/java/com/lightxin/feature/login/data/LoginRepository.kt:15-19`。
 - `LoginModule.provideTokenRefresher()` 把 `LoginRepository` 绑定到接口。锚点：`app/src/main/java/com/lightxin/feature/login/data/LoginRepository.kt:69-81`。
-- `TokenRefreshInterceptor` 通过 `dagger.Lazy<TokenRefresher>` 懒注入，401 时调用刷新并重放一次请求。锚点：`app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:14-28`。
+- `TokenRefreshInterceptor` 通过 `dagger.Lazy<TokenRefresher>` 懒注入，401 时刷新并重放一次请求。两处护栏：`getToken.do` / `refresh.do` 自身的 401 直接放行（否则刷新接口的 401 会再触发刷新，无限递归）；刷新走 `Mutex` 单飞 + 3 秒合并窗口（服务端轮换 refresh_token，并发刷新会互相把对方的新 token 顶成无效）。锚点：`app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:26-64`。
 
 这个方向让 network 只依赖 core/auth 接口，而不是直接依赖 feature/login；同时用 Lazy 避免网络栈初始化时形成循环依赖。
 
@@ -168,7 +168,7 @@ depends_on: [login-overview, network-overview]
 ## 4. 关键决策
 
 - **Token 与首启态同放 `lightxin_auth`，但退出只清会话字段** —— 简化会话读取入口，同时避免退出登录后重复显示欢迎页。来源：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:17,39-49,111-116`。
-- **登录态只看 accessToken 非空** —— 起始页判定不主动发网络校验；token 过期交给请求时的 401 刷新链路处理。来源：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:52-54` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:21-28`。
+- **登录态只看 accessToken 非空** —— 起始页判定不主动发网络校验；token 过期交给请求时的 401 刷新链路处理。来源：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:52-54` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:36-50`。
 - **AuthInterceptor 使用 snapshot 而不是多次单字段读取** —— 单个请求内身份字段来自同一次 DataStore 快照，避免 token 与 userCode 混用不同读取时刻。来源：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:99-109` / `app/src/main/java/com/lightxin/core/network/AuthInterceptor.kt:36,56,75`。
 - **TokenRefresher 放在 core/auth，由 login 实现** —— network 401 刷新链路不直接依赖 feature/login，依赖方向保持 core 接口向外扩展。来源：`app/src/main/java/com/lightxin/core/auth/TokenRefresher.kt:3-5` / `app/src/main/java/com/lightxin/feature/login/data/LoginRepository.kt:78-81`。
 - **publicKey 与 publicKey2 同工具不同用途** —— 登录密码和跑步上传是两套服务端协议，跑步字段名和值都要用 `publicKey2`。来源：`app/src/main/java/com/lightxin/core/auth/RSAUtils.kt:17-36` / `codestable/compound/2026-04-22-decision-running-dual-rsa-encryption.md:15-27`。
@@ -189,15 +189,15 @@ depends_on: [login-overview, network-overview]
 - `app/src/main/java/com/lightxin/feature/login/data/LoginRepository.kt:20-37` — 登录后写 TokenManager。
 - `app/src/main/java/com/lightxin/feature/login/data/LoginRepository.kt:45-65` — refresh token 实现。
 - `app/src/main/java/com/lightxin/core/network/AuthInterceptor.kt:36,56,75` — snapshot 消费点。
-- `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:14-28` — Lazy TokenRefresher + 401 重放。
+- `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:26-64` — Lazy TokenRefresher + 401 重放 + 刷新豁免与单飞。
 - `app/src/main/java/com/lightxin/navigation/NavGraph.kt:59-69` — 起始页三态判定。
 
 ## 6. 已知约束 / 边界情况
 
-- **`isLoggedIn` 不代表 token 一定有效** —— 只代表本地有非空 accessToken；实际过期由请求返回 401 后刷新。锚点：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:52-54` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:21-28`。
+- **`isLoggedIn` 不代表 token 一定有效** —— 只代表本地有非空 accessToken；实际过期由请求返回 401 后刷新。锚点：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:52-54` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:36-50`。
 - **退出登录会连带清掉 FIF 会话与本地资料** —— `SessionManager.logout()` 只到 `TokenManager.clear()`；FIF 独立会话与昵称/头像由调用方补齐：`ProfileViewModel.logout()` 依次 `sessionManager.logout()` → `fifSession.clear()` → `profileStore.clear()`，首页 AI课堂横幅的快捷重登（`HomeViewModel.relogin()`）走同一套。锚点：`app/src/main/java/com/lightxin/core/auth/SessionManager.kt:18-20` / `app/src/main/java/com/lightxin/feature/home/ui/ProfileViewModel.kt:124-134`。
 - **`TokenManager.userName` 是发给服务端的真实姓名，不能被昵称覆盖** —— 显示层一律 `resolveDisplayName(nickname, serverName)`；把昵称写进 `lightxin_auth` 会在下次登录/刷新时被服务端冲掉，还会污染 `AuthInterceptor` 注入的请求参数。锚点：`app/src/main/java/com/lightxin/core/auth/ProfileStore.kt:133` / `app/src/main/java/com/lightxin/core/network/AuthInterceptor.kt:78-99`。
-- **`TokenRefreshInterceptor` 重放的是进入该拦截器时的原始 request** —— 默认 OkHttpClient 的拦截器顺序是 `AuthInterceptor → TokenRefreshInterceptor → Logging`；401 后在 `TokenRefreshInterceptor` 内再次 `chain.proceed(chain.request())`，不会重新经过前序 `AuthInterceptor`。锚点：`app/src/main/java/com/lightxin/core/network/NetworkModule.kt:32-50` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:25-28`。
+- **`TokenRefreshInterceptor` 重放的是进入该拦截器时的原始 request** —— 默认 OkHttpClient 的拦截器顺序是 `AuthInterceptor → TokenRefreshInterceptor → Logging`；401 后在 `TokenRefreshInterceptor` 内再次 `chain.proceed(chain.request())`，不会重新经过前序 `AuthInterceptor`。锚点：`app/src/main/java/com/lightxin/core/network/NetworkModule.kt:32-50` / `app/src/main/java/com/lightxin/core/network/TokenRefreshInterceptor.kt:44-49`。
 - **RSA 公钥硬编码在客户端** —— 这是服务端协议要求，不是可隐藏的客户端秘密。锚点：`app/src/main/java/com/lightxin/core/auth/RSAUtils.kt:17-27`。
 - **`fileAddress` 只持久化不在 core/auth 内解释** —— 语义来自登录响应，core/auth 只保存和暴露快照字段。锚点：`app/src/main/java/com/lightxin/core/auth/TokenManager.kt:25,38,66,74,107`。
 

@@ -40,7 +40,7 @@ cd lightxin
 ./gradlew assembleDebug
 ```
 
-需要 **Android Studio** 和 **JDK 17**，最低支持 **Android 8.0**。
+需要 **Android Studio**。JDK 不用手动装：Gradle 会按 `gradle/gradle-daemon-jvm.properties` 声明的 toolchain 自动下载对应 JDK（Kotlin 侧暂不支持 25，会回落并打印一条 warning，属正常）。最低支持 **Android 8.0**。
 
 
 

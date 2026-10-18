@@ -9,6 +9,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import java.io.IOException
@@ -44,6 +45,8 @@ class LaborRepository @Inject constructor(
                     otherTimes = data.otherTimes?.toDoubleOrNull() ?: 0.0,
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapErrorMessage("获取工时", e), e))
         }
@@ -69,6 +72,8 @@ class LaborRepository @Inject constructor(
                     )
                 }
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapErrorMessage("获取活动列表", e), e))
         }
@@ -93,6 +98,8 @@ class LaborRepository @Inject constructor(
                     createDate = data.createDate ?: "",
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapErrorMessage("获取活动详情", e), e))
         }

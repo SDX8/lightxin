@@ -7,13 +7,11 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-// 签名信息放在不入库的 keystore.properties 里。文件缺失时不配签名：
-// assembleRelease 仍会构建成功，但产出的是装不上的未签名包，别当成"可以发布"。
+// 签名信息放在不入库的 keystore.properties 里；缺了它 release 打包会直接失败（见文件末尾的守卫）。
 val keystoreProps = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use { load(it) }
 }
-
 android {
     namespace = "com.lightxin"
     compileSdk = 37
@@ -43,6 +41,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
             signingConfig = signingConfigs.findByName("release")
             ndk {
                 abiFilters += "arm64-v8a"
@@ -57,6 +56,16 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// 缺 keystore.properties 时 release 直接失败，而不是静默产出一个装不上的未签名包。
+// 拦在任务执行期而不是配置期：没有密钥的机器（新 clone、CI）仍然要能跑测试和 lint。
+if (keystoreProps.isEmpty()) {
+    tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+        doFirst {
+            error("缺少 keystore.properties：release 只会产出未签名包。参照 keystore.properties.example 在仓库根补一份再打。")
+        }
     }
 }
 

@@ -8,6 +8,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import com.google.gson.JsonElement
+import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -49,6 +50,8 @@ class CheckinRepository @Inject constructor(
                     )
                 }
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取签到任务", e), e))
         }
@@ -89,6 +92,8 @@ class CheckinRepository @Inject constructor(
                     address = firstLocation?.signinLocation ?: data.address ?: "",
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取任务详情", e), e))
         }
@@ -106,6 +111,8 @@ class CheckinRepository @Inject constructor(
             } else {
                 Result.success(url)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("上传照片", e), e))
         }
@@ -132,6 +139,8 @@ class CheckinRepository @Inject constructor(
             } else {
                 Result.failure(Exception(response.msg ?: "签到失败"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("提交签到", e), e))
         }

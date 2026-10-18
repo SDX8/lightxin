@@ -153,10 +153,9 @@ class FifSessionManager @Inject constructor(
             .build()
 
         val request = Request.Builder().url(url).get().build()
-        val response = noRedirectClient.newCall(request).execute()
-
-        val location = response.header("Location") ?: return null
-        response.close()
+        // use 包住：没有 Location 的那条早退路径以前会把连接漏掉
+        val location = noRedirectClient.newCall(request).execute().use { it.header("Location") }
+            ?: return null
 
         // 从 Location 提取 token 参数
         // e.g. https://sttp.fifedu.com/studycenter-nh5/?token=xxx&app=axx&redirect_uri=null
@@ -205,9 +204,7 @@ class FifSessionManager @Inject constructor(
             .header("Visit-Type", "mobile")
             .build()
 
-        val response = fifClient.newCall(request).execute()
-        val body = response.body?.string() ?: return null
-        response.close()
+        val body = fifClient.newCall(request).execute().use { it.body?.string() } ?: return null
 
         // 解析 JSON: { data: { id, userType, number, userName, schoolId } }
         return try {

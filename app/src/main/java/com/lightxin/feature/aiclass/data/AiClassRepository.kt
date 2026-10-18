@@ -11,6 +11,7 @@ import com.lightxin.core.network.IzuoyeRetrofit
 import com.lightxin.feature.aiclass.domain.AiCourse
 import com.lightxin.feature.aiclass.domain.AiQuiz
 import com.lightxin.feature.aiclass.domain.AiClassQrPayload
+import com.lightxin.feature.aiclass.domain.trustedQrRequestUrl
 import com.lightxin.feature.aiclass.domain.AiSignInInfo
 import com.lightxin.feature.aiclass.domain.AiWorkingRecord
 import dagger.Module
@@ -26,7 +27,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.CookieJar
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.HttpException
@@ -462,7 +462,7 @@ class AiClassRepository @Inject constructor(
         try {
             Log.i(
                 REPOSITORY_LOG_TAG,
-                "submitQrCode start, raw=${payload.rawValue.previewForLog(48)}, token=${payload.token.previewForLog()}, length=${payload.token.length}",
+                "submitQrCode start, tokenLength=${payload.token.length}, trustedUrl=${trustedQrRequestUrl(payload.rawValue) != null}",
             )
             var auth = ensureSession()
             var attempt = executeQrCodeRequest(payload, auth)
@@ -480,12 +480,10 @@ class AiClassRepository @Inject constructor(
     }
 
     private suspend fun buildQrHandlerUrl(payload: AiClassQrPayload): String {
-        val rawValue = payload.rawValue.trim()
-        val baseUrl = if (rawValue.toHttpUrlOrNull() != null) {
-            rawValue
-        } else {
-            "${ApiConstants.BASE_FIF}/coursecenter-interaction/qrcodeV2/qrcodeHandler?token=${payload.token}&openTheWay=2"
-        }
+        // 二维码原文只有在指向 FIF 自家域名时才被采信；其余一律按本地模板重建，
+        // 否则一张假码就能让这份请求把 FIF token 与校内 access_token 送到别人的服务器
+        val baseUrl = trustedQrRequestUrl(payload.rawValue)
+            ?: "${ApiConstants.BASE_FIF}/coursecenter-interaction/qrcodeV2/qrcodeHandler?token=${payload.token}&openTheWay=2"
         return fifSession.appendQrLoginParams(baseUrl)
     }
 
@@ -543,9 +541,10 @@ class AiClassRepository @Inject constructor(
         val location = response.header("Location").orEmpty()
         response.close()
 
+        // 只记 host 与状态码：URL 里有 token 与 access_token，Location 里可能有会话标识
         Log.i(
             REPOSITORY_LOG_TAG,
-            "qrcodeHandler finished, httpCode=$code, location=${location.previewForLog(96)}, url=${url.previewForLog(96)}",
+            "qrcodeHandler finished, httpCode=$code, host=${url.toHttpUrl().host}, redirected=${location.isNotEmpty()}",
         )
 
         return QrRequestResult(
@@ -631,11 +630,6 @@ class AiClassRepository @Inject constructor(
         Log.i(REPOSITORY_LOG_TAG, "Timetable supplement: ${courses.size} courses loaded, schoolId=$schoolId, memberId=$memberId")
         return courses
     }
-}
-
-private fun String.previewForLog(maxLen: Int = 16): String {
-    if (isBlank()) return "<blank>"
-    return if (length <= maxLen) this else take(maxLen) + "..."
 }
 
 private fun buildCourseStableId(item: AiClassCourseResponse.CourseItem): String {

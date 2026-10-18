@@ -9,6 +9,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import java.io.IOException
@@ -25,6 +26,8 @@ class ExamRepository @Inject constructor(
             val resp = api.getCurrentTerm()
             val vo = resp.data?.xlVo ?: return Result.failure(Exception("获取当前学期失败"))
             Result.success(CurrentTerm(schoolYear = vo.xn.orEmpty(), semester = vo.xq.orEmpty()))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取当前学期", e), e))
         }
@@ -37,6 +40,8 @@ class ExamRepository @Inject constructor(
                 SchoolYear(display = it.text.orEmpty(), value = it.value.orEmpty())
             }
             Result.success(list)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取学年列表", e), e))
         }
@@ -61,6 +66,8 @@ class ExamRepository @Inject constructor(
                 )
             }
             Result.success(list)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取考试成绩", e), e))
         }

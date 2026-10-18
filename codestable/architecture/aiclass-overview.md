@@ -103,7 +103,7 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 
 ### 2.6 扫码签到流程（手动处理 302 跳转）
 
-锚点：`feature/aiclass/data/AiClassRepository.kt:153-273`
+锚点：`feature/aiclass/data/AiClassRepository.kt:461-556`
 
 这是模块中最复杂的逻辑。FIF 的扫码签到接口 `qrcodeHandler` 不返回 JSON，而是返回 HTTP 302 重定向。App 需要：
 
@@ -211,8 +211,8 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 
 - **FIF 独立 OkHttpClient + CookieJar** —— 与校内主站 token 体系完全隔离，避免 Cookie 污染。来源：`compound/2026-04-22-decision-fif-independent-okhttp-stack.md`。
 - **扫码用 ML Kit 而非 ZXing** —— Google 官方库，维护成本低，自带自动变焦。来源：`compound/2026-04-22-decision-ml-kit-barcode.md`。
-- **手动处理 302 跳转** —— FIF 接口返回重定向而非 JSON，App 需要手动跟随。来源：`AiClassRepository.kt:153-273`。
-- **SSO 失败后自动重试** —— `submitQrCode` 在检测到 `loginManage` 重定向时，强制刷新 SSO 后重试一次。来源：`AiClassRepository.kt:161-165`。
+- **手动处理 302 跳转** —— FIF 接口返回重定向而非 JSON，App 需要手动跟随。来源：`AiClassRepository.kt:461-556`。
+- **SSO 失败后自动重试** —— `submitQrCode` 在检测到 `loginManage` 重定向时，强制刷新 SSO 后重试一次。来源：`AiClassRepository.kt:469-473`。
 - **启动体检只在 `Blocked` 时提示** —— `performSso()` 会把网络异常和超时统一包成普通 `Exception`，所以分类只能沿异常 cause 链找 `IOException` / `CancellationException`（`isProbeFailure`），绝不按 message 文本判断，否则断网会被说成「多端登录」。来源：`AiClassSessionGuard.kt:52-53`。
 - **体检直接复用 `performSso()` 而不是造只读探针** —— 映射接口在没有 SESSION Cookie 时的行为不可信，单独探一下反而拿不到结论；跑完整 SSO 既能判定又能顺手续期。代价是冷启动多三个请求。
 - **CameraX + PreviewView** —— 使用 Android Jetpack CameraX 库管理相机生命周期，避免直接操作 Camera2 API。
@@ -238,7 +238,7 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 ## 6. 已知约束 / 边界情况
 
 - **couseItemId 拼写错误** —— FIF 接口返回的字段名存在拼写错误，代码中保持原样（`courseItemName` 实际为 `@SerializedName("courseItemName")`）。来源：`AiClassResponse.kt:75`。
-- **扫码重试只做一次** —— 如果刷新 SSO 后仍然返回 `loginManage`，不会继续重试。来源：`AiClassRepository.kt:161-165`。
+- **扫码重试只做一次** —— 如果刷新 SSO 后仍然返回 `loginManage`，不会继续重试。来源：`AiClassRepository.kt:469-473`。
 - **扫码页不处理权限被永久拒绝** —— 如果用户拒绝相机权限，`CameraPermissionRequest` 调用 `onBack()` 返回。没有引导用户去设置页面开启权限。
 - **签到按钮禁用条件** —— `SignInCard` 的签到按钮在 `hasWorkingClass = false` 时禁用，但数字码输入框仍可输入。来源：`AiClassHomeScreen.kt:258`。
 - **FIF 会话是半持久态** —— `fif_token` / `studentId` 存在 `fif_session` DataStore，SESSION Cookie 只在内存 jar 里。进程重启后 Cookie 丢失会触发重新 SSO；但进程活着时 `isSessionValid()` 恒为 true，服务端映射被别人顶掉后本地毫无察觉 —— 启动体检就是为补这个洞（§2.10）。
@@ -246,7 +246,7 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 - **课程补数依赖 schoolId + memberId** —— `timetableInfo` 同时要求 `schoolId` 和 `mid(memberId)`；任一缺失时当前实现会直接跳过补数，退回 `myClassroom` 单源列表。
 - **补进课程使用教学班 ID 进详情** —— 课表条目的原始 `courseId` 不是测验详情使用的那个 ID，若误用会导致课程详情页存在但测验为空。
 - **理论/实验不能只依赖 typeName** —— 部分 `myClassroom` 响应不返回 `typeName`，但会把 `(理论)` / `(实验)` 放在 `className/classNames/classNameStr` 中；课程显示和去重都必须兼容这些字段。
-- **qrcodeHandler 的 URL 构建有两种路径** —— 完整 URL 二维码直接用原值 + 追加参数；纯 token 二维码构造完整 URL。来源：`AiClassRepository.kt:174-181`。
+- **二维码原文只有在指向 FIF 自家域名时才当请求地址用** —— 扫码请求会带上 `Basic <FIF token>`、身份 Cookie 与追加进查询串的校内 access_token，原文能随便写 host 就等于一张假码可把整份凭据送到攻击者服务器。非 `https://sttp|izuoye|aiitpass.fifedu.com` 的原文一律回落到本地模板按 token 重建 URL。来源：`feature/aiclass/domain/AiClassQrPayload.kt:18-36`、`feature/aiclass/data/AiClassRepository.kt:482-489`。
 
 ## 7. 相关文档
 

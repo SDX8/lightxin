@@ -5,6 +5,7 @@ import com.lightxin.feature.update.domain.AppVersion
 import com.lightxin.feature.update.domain.AppVersionProvider
 import com.lightxin.feature.update.domain.UpdateInfo
 import com.lightxin.feature.update.domain.UpdateResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,6 +35,8 @@ class UpdateRepository @Inject constructor(
 
         val dto = try {
             api.getLatestRelease()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             return UpdateResult.Failed(e.message ?: "网络请求失败")
         }

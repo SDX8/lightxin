@@ -10,6 +10,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import java.io.IOException
@@ -39,6 +40,8 @@ class CreditRepository @Inject constructor(
                     },
                 ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取学分总览", e), e))
         }
@@ -58,6 +61,8 @@ class CreditRepository @Inject constructor(
                     )
                 },
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取学分记录", e), e))
         }
@@ -81,6 +86,8 @@ class CreditRepository @Inject constructor(
                     statusName = item.statusName.orEmpty(),
                 ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取记录详情", e), e))
         }

@@ -11,6 +11,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import retrofit2.Retrofit
 import retrofit2.HttpException
@@ -53,6 +54,8 @@ class ScheduleRepository @Inject constructor(
                 )
             }
             Result.success(weekInfo)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             val cached = userCode.takeIf { it.isNotBlank() }?.let { cacheStore.weekInfo(it) }
             if (cached != null) {
@@ -116,6 +119,8 @@ class ScheduleRepository @Inject constructor(
             )
             // 缓存只存服务端结果，用户自设的早/晚行在出口处才并进 —— 每所班级不同、也不该被写进别人的快照
             Result.success(data.withSpecialSections())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             val cached = cachedCourses(schoolYear, schoolTerm, week)
             if (cached != null) {

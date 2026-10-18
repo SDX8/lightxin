@@ -9,6 +9,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -54,6 +55,8 @@ class HolidayRepository @Inject constructor(
                 }.awaitAll()
             }
             Result.success(tasks)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取节假日列表", e), e))
         }
@@ -69,6 +72,8 @@ class HolidayRepository @Inject constructor(
             val data = response.data
                 ?: return Result.failure(Exception("获取节假日详情失败"))
             Result.success(data)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取节假日详情", e), e))
         }
@@ -90,6 +95,8 @@ class HolidayRepository @Inject constructor(
                     StrokeOption(label = label, value = value)
                 }
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取字典选项", e), e))
         }
@@ -118,6 +125,8 @@ class HolidayRepository @Inject constructor(
                     urgentPhone = item?.urgentPhone.orEmpty(),
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("获取已有登记", e), e))
         }
@@ -151,6 +160,8 @@ class HolidayRepository @Inject constructor(
             } else {
                 Result.failure(Exception(response.msg ?: "提交登记失败"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(mapError("提交登记", e), e))
         }

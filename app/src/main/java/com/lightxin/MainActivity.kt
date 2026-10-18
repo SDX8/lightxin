@@ -19,6 +19,7 @@ import com.lightxin.core.designsystem.theme.LightXinTheme
 import com.lightxin.feature.home.domain.HomeBootstrap
 import com.lightxin.feature.update.data.UpdateRepository
 import com.lightxin.navigation.LightXinNavHost
+import com.lightxin.navigation.Routes
 import com.lightxin.navigation.ShortcutRouter
 import com.lightxin.navigation.ShortcutTarget
 import dagger.hilt.android.AndroidEntryPoint
@@ -46,7 +47,7 @@ class MainActivity : ComponentActivity() {
         // splash 放行标志：数据就绪 OR 1500ms 超时均会置 true；两路解耦，超时不会取消加载协程
         var splashReleased = false
         shortcutTarget = ShortcutTarget.fromAction(intent?.action)
-        pendingNotificationRoute = intent?.getStringExtra("notification_route")
+        pendingNotificationRoute = Routes.notificationRouteOrNull(intent?.getStringExtra("notification_route"))
 
         // 独立协程：真实执行数据加载（即使超时也会继续跑完，结果写入 HomeBootstrap.snapshot）
         lifecycleScope.launch { homeBootstrap.load() }
@@ -121,8 +122,8 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // 通知点击路由
-        val notificationRoute = intent.getStringExtra("notification_route")
+        // 通知点击路由（外部 Intent 只能命中白名单，见 Routes.notificationRouteOrNull）
+        val notificationRoute = Routes.notificationRouteOrNull(intent.getStringExtra("notification_route"))
         if (notificationRoute != null) {
             pendingNotificationRoute = notificationRoute
             return

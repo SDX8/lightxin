@@ -169,6 +169,7 @@ AI 课堂页面（AICLASS_HOME / AICLASS_SCAN / AICLASS_DETAIL）共享 `AiClass
 - **CHECKIN_LIST 使用 `getStateFlow` 订阅 refresh 信号** —— 这是 Compose 安全的订阅方式，但需要记得在消费后置回 false，否则下次进入列表页时会错误触发刷新。
 - **schedule 不走 NavHost 路由** —— 当前 `Routes.kt` 不再定义独立 `SCHEDULE` 常量；课表是 `HomeScreen` 的 tab 1，由 HomeScreen 内部管理，不经过 NavHost。
 - **初始 loading 状态不会在 401 时显示错误** —— `startRoute` 为 null 时只显示 `LxLoading`，没有超时或错误处理。如果 Flow 永不发射值（如 DataStore 损坏），用户会卡在加载页。
+- **外部 Intent 只能命中通知路由白名单** —— `MainActivity` 是 exported 的，`notification_route` extra 以前拿到什么就 `navigate()` 什么：口令门禁挡住的「模拟提交」屏、扫码相机都能被外部直接拉起，塞一个不存在的路由还能崩在 `IllegalArgumentException`。现在只允许 `Routes.notificationRouteOrNull()` 名单内的精确匹配（当前只有 `aiclass/home` 与 `running/active`，即通知真正会发的两个目的地）。**新增通知目的地时必须同步这份名单**，否则通知点击会静默不跳。锚点：`app/src/main/java/com/lightxin/navigation/Routes.kt:66-76` / `app/src/main/java/com/lightxin/MainActivity.kt:50,126`。
 
 ## 7. 相关文档
 

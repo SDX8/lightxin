@@ -1,7 +1,6 @@
 package com.lightxin.navigation
 
 import android.net.Uri
-import kotlinx.serialization.Serializable
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -62,4 +61,16 @@ object Routes {
 
     // About
     const val ABOUT = "about"
+
+    /**
+     * 通知点击允许直达的路由。
+     *
+     * MainActivity 是 exported 的，任何应用都能 startActivity 带一个 `notification_route` extra，
+     * 之前拿到什么就 navigate 什么：口令门禁挡住的「模拟提交」屏、扫码相机都能被外部直接拉起，
+     * 塞一个不存在的路由还能崩在 IllegalArgumentException 上。
+     * 只认这份名单、且只认精确匹配 —— 带参数的路由（如 checkin/detail/{id}）本来就不在名单里。
+     */
+    private val NOTIFICATION_DESTINATIONS = setOf(AICLASS_HOME, RUNNING_ACTIVE)
+
+    fun notificationRouteOrNull(raw: String?): String? = raw?.takeIf { it in NOTIFICATION_DESTINATIONS }
 }

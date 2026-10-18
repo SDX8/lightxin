@@ -64,7 +64,8 @@ class LoginViewModel @Inject constructor(
                         password = state.password,
                         remember = state.rememberPassword,
                     )
-                    _uiState.update { it.copy(isLoading = false, loginSuccess = true) }
+                    // 密码已经按需进 Keystore，UiState 里不再留着明文
+                    _uiState.update { it.copy(isLoading = false, loginSuccess = true, password = "") }
                 },
                 onFailure = { e ->
                     _uiState.update {

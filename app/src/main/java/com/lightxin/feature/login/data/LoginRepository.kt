@@ -8,6 +8,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import retrofit2.Retrofit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,6 +38,8 @@ class LoginRepository @Inject constructor(
                 )
                 Result.success(Unit)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
