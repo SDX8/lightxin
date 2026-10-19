@@ -127,7 +127,11 @@ depends_on: [network-overview]
 - 若无默认模板，或模板采样结果不足 2 个点，则退回 `TrajectoryGenerator.generate(config)` 的内置校园路线
 - 最终都交给 `repository.submitSimulation(config, overrideTrajectory)`，由它先 `startRunning()` 取 `exerciseId`，再构造 `RunningSnapshot` 并复用统一上传链路
 
-锚点：`feature/running/ui/RunningViewModel.kt:214-270` / `feature/running/ui/RunningSimScreen.kt:79-123,126-220,231-231` / `feature/running/data/RunningRepository.kt:230-252` / `feature/running/domain/TrajectoryGenerator.kt:40-65`。
+锚点：`feature/running/ui/RunningViewModel.kt:241-297` / `feature/running/ui/RunningSimScreen.kt:127-179,180-239,241-246` / `feature/running/data/RunningRepository.kt:247-266` / `feature/running/domain/TrajectoryGenerator.kt:40-68`。
+
+**时长是「分 + 秒」两段计时器式输入**（2026-10-19 起）：`RunningUiState` 存 `simDurationMinutes` / `simDurationSeconds` 两个字符串，归一与合成放在领域层纯函数里 —— `normalizeSimDurationPart` 卡位数与上限（秒 0–59、分 0–999，越界直接不收，用户敲不进非法档位），`simDurationTotalSeconds` 合成总秒数，`SimConfig` 只带 `durationSeconds: Long`（原来是 `durationMinutes: Int`，分钟粒度没法表达 24 分 05 秒）。速度、开始时间回拨、轨迹采样、上传 `RunningSnapshot.durationSeconds` 全部以总秒数为准。
+
+锚点：`feature/running/domain/RunningModels.kt:83-114` / `feature/running/ui/RunningViewModel.kt:196-229,316-323`。
 
 **两条生成分支现在走同一个采样器**。`TrajectoryGenerator` 的内置环线和用户模板都经 `sampleClosedLoop()` → `PolylineSampler` 做段内线性插值，并在末尾补上闭合段。此前内置路线直接取 8 个顶点，相邻点名义步长 40 m、实际几何跳变 100–300 m；现在与模板路径共用同一套步长口径（默认 30 m），且同一 `SimConfig` 两次生成结果一致（`PolylineSampler` 用 `Random(startTimeMillis)` 定种，旧的内置分支用全局 `Random` 做抖动，结果不可复现）。
 
@@ -195,6 +199,7 @@ navigation 层把 running 明确拆成两套共享作用域：
 | `RunningTrackerState` | 当前采集中的内存态，含 `endTimeMillis` 轨迹锁定位 | `feature/running/domain/RunningModels.kt:39-50` |
 | `RunningSnapshot` | 上传前的统一中间态 | `feature/running/domain/RunningModels.kt:52-59` |
 | `GeneratedTrajectory` | 模拟轨迹 + 它的坐标系标记 | `feature/running/domain/RunningModels.kt:66-75` |
+| `SimConfig` | 模拟提交参数：距离 + **总秒数** + 开始时间 | `feature/running/domain/RunningModels.kt:83-87` |
 | `RouteTemplate` | 本地可复用模板资产 | `feature/running/domain/RouteTemplate.kt:3-18` |
 | `GeoDistance` | 统一 Haversine 米制距离计算 | `feature/running/domain/GeoDistance.kt:9-18` |
 | `ClubTask / ClubCheckRecord` | 俱乐部任务时间线与历史打卡记录 | `feature/running/exercise/domain/ClubModels.kt` |

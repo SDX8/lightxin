@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -142,12 +143,22 @@ fun RunningSimScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        LxTextField(
-                            value = uiState.simDurationMinutes,
-                            onValueChange = viewModel::updateSimDurationMinutes,
-                            label = "时长（分钟）",
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            LxTextField(
+                                value = uiState.simDurationMinutes,
+                                onValueChange = viewModel::updateSimDurationMinutes,
+                                label = "时长（分）",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                            LxTextField(
+                                value = uiState.simDurationSeconds,
+                                onValueChange = viewModel::updateSimDurationSeconds,
+                                label = "时长（秒）",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
 
                         FlowRow(

@@ -10,7 +10,7 @@ class TrajectoryGeneratorTest {
     private val startMillis = 1_700_000_000_000L
     private val config = SimConfig(
         distanceKm = 3.2,
-        durationMinutes = 24,
+        durationSeconds = 1_440L,
         startTimeMillis = startMillis,
     )
 
@@ -39,7 +39,7 @@ class TrajectoryGeneratorTest {
     @Test
     fun `timestamps run from the start time across the configured duration`() {
         val points = TrajectoryGenerator.generate(config).points
-        val durationMillis = config.durationMinutes * 60_000L
+        val durationMillis = config.durationSeconds * 1_000L
 
         assertEquals(startMillis, points.first().timestampMillis)
         val spanMillis = points.last().timestampMillis - startMillis

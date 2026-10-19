@@ -255,7 +255,7 @@ class RunningRepository @Inject constructor(
             val snapshot = RunningSnapshot(
                 startInfo = startInfo,
                 startTimeMillis = config.startTimeMillis,
-                durationSeconds = config.durationMinutes * 60L,
+                durationSeconds = config.durationSeconds,
                 distanceMeters = config.distanceKm * 1000.0,
                 points = trajectory.points,
                 pointsAreBd09 = trajectory.isBd09,

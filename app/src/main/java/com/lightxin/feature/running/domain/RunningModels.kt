@@ -82,9 +82,35 @@ data class RunRecordVerdict(
 
 data class SimConfig(
     val distanceKm: Double,
-    val durationMinutes: Int,
+    val durationSeconds: Long,
     val startTimeMillis: Long,
 )
+
+/** 时长输入上限：分钟最多 999，秒固定 0–59 */
+const val SIM_MINUTES_MAX = 999
+const val SIM_SECONDS_MAX = 59
+
+/**
+ * 计时器式输入的单段归一：只留数字，位数和取值都卡在上限内。
+ * 越界返回 null，让调用方保留原值——用户敲不进 60 秒，而不是敲完再报错。
+ */
+fun normalizeSimDurationPart(raw: String, max: Int): String? {
+    val digits = raw.filter(Char::isDigit)
+    if (digits.isEmpty()) return ""
+    if (digits.length > max.toString().length) return null
+    return digits.toIntOrNull()?.takeIf { it <= max }?.let { digits }
+}
+
+/** 分 + 秒归一成总秒数；两段都空或总时长为 0 时返回 null。 */
+fun simDurationTotalSeconds(minutes: String, seconds: String): Long? {
+    if (minutes.isBlank() && seconds.isBlank()) return null
+    val total = (minutes.toIntOrNull() ?: 0) * 60L + (seconds.toIntOrNull() ?: 0)
+    return total.takeIf { it > 0 }
+}
+
+/** 总秒数拆回「24 分 05 秒」展示串 */
+fun formatSimDuration(totalSeconds: Long): String =
+    "${totalSeconds / 60} 分 ${(totalSeconds % 60).toString().padStart(2, '0')} 秒"
 
 /**
  * 生成好的模拟轨迹，自带坐标系标记。
