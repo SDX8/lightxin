@@ -17,9 +17,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,6 +39,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.lightxin.core.designsystem.component.LxCard
 import com.lightxin.core.designsystem.component.LxEmpty
 import com.lightxin.core.designsystem.component.LxError
+import com.lightxin.core.designsystem.component.LxIconButton
 import com.lightxin.core.designsystem.component.LxInlineErrorCard
 import com.lightxin.core.designsystem.component.LxLoading
 import com.lightxin.core.designsystem.component.LxTopBar
@@ -50,6 +54,7 @@ fun CheckinListScreen(
     onBack: () -> Unit,
     onTaskClick: (taskDateId: String) -> Unit,
     onHolidayClick: (holidayId: String) -> Unit = {},
+    onHistoryClick: () -> Unit = {},
     shouldRefresh: Boolean,
     onRefreshConsumed: () -> Unit,
     modifier: Modifier = Modifier,
@@ -68,7 +73,21 @@ fun CheckinListScreen(
     Scaffold(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { LxTopBar(title = "查寝签到", onBack = onBack) },
+        topBar = {
+            LxTopBar(
+                title = "查寝签到",
+                onBack = onBack,
+                actions = {
+                    LxIconButton(onClick = onHistoryClick) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = "历史记录",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                },
+            )
+        },
     ) { padding ->
         when {
             uiState.isLoading -> LxLoading(modifier = Modifier.padding(padding))

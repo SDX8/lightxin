@@ -18,6 +18,18 @@ interface CheckinApi {
         @Body body: Map<String, @JvmSuppressWildcards Any>,
     ): SignInPageResponse
 
+    /** 查寝历史：官方历史页按月 + 状态档查，createBy 必须是本人学号 */
+    @POST("app/dorm/pageStudentStatics")
+    suspend fun pageStudentStatics(
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): StudentStaticsResponse
+
+    /** 某学生某月的查寝汇总数字 */
+    @POST("app/dorm/collectionStudentStatics")
+    suspend fun collectionStudentStatics(
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): StudentStaticsCountResponse
+
     /** 获取任务详情 */
     @POST("app/dorm/getTaskInfoByDateId")
     suspend fun getTaskInfoByDateId(

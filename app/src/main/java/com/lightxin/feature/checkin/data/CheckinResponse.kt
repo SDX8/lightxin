@@ -44,6 +44,49 @@ data class SignInTaskRow(
 )
 
 /**
+ * POST /app/dorm/pageStudentStatics 响应 —— 官方「查寝历史」页的分页列表。
+ * 每行是任务实体的投影，多数字段回 null，状态由查询时选的档决定（服务端不再回状态）。
+ */
+data class StudentStaticsResponse(
+    val code: String?,
+    val flag: Boolean?,
+    val msg: String?,
+    val rows: List<StaticsRow>?,
+    val total: Int?,
+)
+
+data class StaticsRow(
+    val id: String?,
+    val title: String?,
+    /** 月内日期标签，形如「10-19」 */
+    val taskDateStr: String?,
+    val timedStartTime: String?,
+    val signinPlace: String?,
+    val signinPhoto: String?,
+    val executionedStatus: String?,
+)
+
+/**
+ * POST /app/dorm/collectionStudentStatics 响应 —— 某学生某月的查寝汇总
+ */
+data class StudentStaticsCountResponse(
+    val code: String?,
+    val flag: Boolean?,
+    val msg: String?,
+    val data: StudentStaticsCount?,
+)
+
+data class StudentStaticsCount(
+    val signinedNum: Int?,
+    val leaveNum: Int?,
+    val notSigninedNum: Int?,
+    val leaveSchoolNum: Int?,
+    val qrCodeNum: Int?,
+    /** 本月应查寝次数 */
+    val signiningNum: Int?,
+)
+
+/**
  * POST /app/dorm/getTaskInfoByDateId 响应
  */
 data class TaskInfoResponse(

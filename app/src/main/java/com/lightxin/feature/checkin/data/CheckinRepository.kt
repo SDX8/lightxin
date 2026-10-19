@@ -1,16 +1,24 @@
 package com.lightxin.feature.checkin.data
 
+import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.network.CheckinRetrofit
 import com.lightxin.core.network.fdyglFailureMessage
 import com.lightxin.core.network.fdyglSucceeded
+import com.lightxin.feature.checkin.domain.CheckinHistoryRecord
+import com.lightxin.feature.checkin.domain.CheckinMonthHistory
+import com.lightxin.feature.checkin.domain.CheckinMonthSummary
+import com.lightxin.feature.checkin.domain.CheckinRecordStatus
 import com.lightxin.feature.checkin.domain.CheckinTask
 import com.lightxin.feature.checkin.domain.TaskDetail
+import com.lightxin.feature.checkin.domain.sortCheckinHistory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import com.google.gson.JsonElement
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -21,10 +29,13 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val PAGE_SIZE_HISTORY = 50
+
 @Singleton
 class CheckinRepository @Inject constructor(
     private val api: CheckinApi,
     private val fileApi: FileUploadApi,
+    private val tokenManager: TokenManager,
 ) {
     suspend fun getTasks(page: Int, pageSize: Int = 10): Result<List<CheckinTask>> {
         return try {
@@ -58,6 +69,74 @@ class CheckinRepository @Inject constructor(
             Result.failure(Exception(mapError("获取签到任务", e), e))
         }
     }
+
+    /**
+     * 查寝历史（按月）。服务端每个状态档各查一次，行里不回状态，
+     * 所以状态由查询条件带回来 —— 与官方 H5 历史页的分页签一致。
+     */
+    suspend fun getMonthHistory(month: String): Result<CheckinMonthHistory> {
+        val userCode = tokenManager.getUserCode()?.takeIf { it.isNotBlank() }
+            ?: return Result.failure(Exception("缺少学号，请重新登录"))
+        return try {
+            val counts = api.collectionStudentStatics(monthBody(month, userCode))
+            if (!fdyglSucceeded(counts.code, counts.flag)) {
+                return Result.failure(Exception(fdyglFailureMessage(counts.msg, "获取查寝汇总失败")))
+            }
+            val records = coroutineScope {
+                CheckinRecordStatus.entries.map { status ->
+                    async { fetchStatics(month, userCode, status) }
+                }.map { it.await() }
+            }.flatten()
+            Result.success(
+                CheckinMonthHistory(
+                    records = sortCheckinHistory(records),
+                    summary = CheckinMonthSummary(
+                        dueCount = counts.data?.signiningNum ?: 0,
+                        counts = mapOf(
+                            CheckinRecordStatus.SIGNED to (counts.data?.signinedNum ?: 0),
+                            CheckinRecordStatus.LEAVE to (counts.data?.leaveNum ?: 0),
+                            CheckinRecordStatus.NOT_SIGNED to (counts.data?.notSigninedNum ?: 0),
+                            CheckinRecordStatus.LEAVE_SCHOOL to (counts.data?.leaveSchoolNum ?: 0),
+                        ),
+                    ),
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(Exception(mapError("获取查寝历史", e), e))
+        }
+    }
+
+    private suspend fun fetchStatics(
+        month: String,
+        userCode: String,
+        status: CheckinRecordStatus,
+    ): List<CheckinHistoryRecord> {
+        val response = api.pageStudentStatics(monthBody(month, userCode) + ("executionedStatus" to status.code))
+        if (!fdyglSucceeded(response.code, response.flag)) {
+            throw Exception(fdyglFailureMessage(response.msg, "获取查寝历史失败"))
+        }
+        return response.rows.orEmpty().map { row ->
+            CheckinHistoryRecord(
+                id = row.id ?: "",
+                taskName = row.title.orEmpty(),
+                dateLabel = row.taskDateStr.orEmpty(),
+                time = row.timedStartTime.orEmpty().substringAfter(' ').take(5),
+                place = row.signinPlace.orEmpty(),
+                hasPhoto = !row.signinPhoto.isNullOrBlank(),
+                status = status,
+            )
+        }
+    }
+
+    private fun monthBody(month: String, userCode: String) = mapOf<String, Any>(
+        "pageNum" to 1,
+        "pageSize" to PAGE_SIZE_HISTORY,
+        "taskMajorType" to "3",
+        "createBy" to userCode,
+        "staticDate" to month,
+    )
 
     suspend fun getTaskDetail(dateId: String): Result<TaskDetail> {
         return try {

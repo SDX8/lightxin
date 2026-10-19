@@ -10,6 +10,7 @@ object Routes {
     // Checkin
     const val CHECKIN_LIST = "checkin/list"
     const val CHECKIN_DETAIL = "checkin/detail/{taskDateId}"
+    const val CHECKIN_HISTORY = "checkin/history"
     fun checkinDetail(taskDateId: String) = "checkin/detail/$taskDateId"
 
     // Holiday

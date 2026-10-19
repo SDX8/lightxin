@@ -73,3 +73,50 @@ data class TaskDetail(
     val centerLat: Double,       // 签到中心纬度
     val address: String,
 )
+
+/**
+ * 学生端查寝历史的状态档。文案与取值照抄官方 H5 的「查寝历史」页标签，
+ * 服务端没有「已取消」这一档，被取消的任务对学生侧就是不出现或落进未签到。
+ */
+enum class CheckinRecordStatus(val code: String, val label: String) {
+    SIGNED("1", "已签到"),
+    LEAVE("3", "已请假"),
+    NOT_SIGNED("0", "未签到"),
+    LEAVE_SCHOOL("4", "登记离校"),
+    ;
+
+    companion object {
+        fun fromCode(code: String?): CheckinRecordStatus? = entries.firstOrNull { it.code == code }
+    }
+}
+
+data class CheckinHistoryRecord(
+    val id: String,
+    val taskName: String,
+    /** 服务端给的月内日期标签，形如「10-19」 */
+    val dateLabel: String,
+    val time: String,
+    val place: String,
+    val hasPhoto: Boolean,
+    val status: CheckinRecordStatus,
+)
+
+data class CheckinMonthSummary(
+    val dueCount: Int,
+    val counts: Map<CheckinRecordStatus, Int>,
+)
+
+data class CheckinMonthHistory(
+    val records: List<CheckinHistoryRecord>,
+    val summary: CheckinMonthSummary,
+)
+
+/** 日期标签是「MM-dd」，同一天里已签到排前面 */
+fun sortCheckinHistory(records: List<CheckinHistoryRecord>): List<CheckinHistoryRecord> =
+    records.sortedWith(
+        compareByDescending<CheckinHistoryRecord> { it.dateLabel }
+            .thenBy { it.status.ordinal }
+    )
+
+/** 官方历史页按月查，staticDate 就是 "yyyy-MM" */
+fun checkinMonthKey(year: Int, month: Int): String = "$year-${month.toString().padStart(2, '0')}"

@@ -43,7 +43,7 @@ depends_on: [home-overview, login-overview, checkin-overview, running-overview, 
 | 组 | 路由数 | 路由 |
 |---|---|---|
 | 核心 | 3 | ONBOARDING / LOGIN / HOME |
-| 查寝 | 2 | CHECKIN_LIST / CHECKIN_DETAIL（含参数 `taskDateId`） |
+| 查寝 | 3 | CHECKIN_LIST / CHECKIN_DETAIL（含参数 `taskDateId`）/ CHECKIN_HISTORY |
 | 跑步 | 10 | RUNNING_HOME / RUNNING_ACTIVE / RUNNING_SIM / RUNNING_RESULT / RUNNING_ROUTE_SETTINGS / RUNNING_ROUTE_RECORD / RUNNING_ROUTE_LIST / RUNNING_ROUTE_DETAIL（含参数 `templateId`）/ RUNNING_CLUB_DETAIL / RUNNING_EXERCISE_CHECK（含参数 `autoId/memberId`） |
 | 劳教 | 1 | LABOR_SUMMARY |
 | AI 课堂 | 4 | AICLASS_HOME / AICLASS_SCAN / AICLASS_DETAIL（含参数 `classId`）/ AICLASS_HOMEWORK_DETAIL（含参数 `cwId/teachClassId`） |
@@ -54,7 +54,7 @@ depends_on: [home-overview, login-overview, checkin-overview, running-overview, 
 | 课表 | 1 | SPECIAL_SECTIONS（早自习/晚自习设置） |
 | 关于 | 1 | ABOUT |
 
-合计 **26 条路由常量**。
+合计 **27 条路由常量**。
 
 参数化路由使用 `fun` 构造完整路径字符串：
 ```kotlin
@@ -148,7 +148,7 @@ AI 课堂页面（AICLASS_HOME / AICLASS_SCAN / AICLASS_DETAIL）共享 `AiClass
 
 ## 5. 代码锚点
 
-- `navigation/Routes.kt:5-65` — 全部 26 条路由常量与参数化构造函数
+- `navigation/Routes.kt:5-65` — 全部 27 条路由常量与参数化构造函数
 - `navigation/NavGraph.kt:56-81` — 起始页决策逻辑 + `resolvedStartRoute` 非空绑定
 - `navigation/NavGraph.kt:78-89` — 默认转场动画
 - `navigation/NavGraph.kt:90-115` — OnboardingScreen 路由

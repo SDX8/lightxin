@@ -39,6 +39,7 @@ import com.lightxin.feature.aiclass.ui.AiClassScanScreen
 import com.lightxin.feature.aiclass.ui.AiHomeworkDetailScreen
 import com.lightxin.feature.about.ui.AboutScreen
 import com.lightxin.feature.checkin.ui.CheckinDetailScreen
+import com.lightxin.feature.checkin.ui.CheckinHistoryScreen
 import com.lightxin.feature.checkin.ui.CheckinListScreen
 import com.lightxin.feature.credit.ui.CreditScreen
 import com.lightxin.feature.exam.ui.ExamScreen
@@ -225,11 +226,15 @@ fun LightXinNavHost(
                 onHolidayClick = { holidayId ->
                     navController.navigate(Routes.holidayRegister(holidayId))
                 },
+                onHistoryClick = { navController.navigate(Routes.CHECKIN_HISTORY) },
                 shouldRefresh = shouldRefresh,
                 onRefreshConsumed = {
                     backStackEntry.savedStateHandle["checkin_refresh"] = false
                 },
             )
+        }
+        composable(Routes.CHECKIN_HISTORY) {
+            CheckinHistoryScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = Routes.HOLIDAY_REGISTER,

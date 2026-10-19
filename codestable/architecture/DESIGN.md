@@ -10,7 +10,7 @@
 **当前实现状态**（截至 2026-05-31）：
 
 - MVP 五大模块（登录 / 课程表 / 查寝 / 跑步 / 劳教）已全部上线
-- 在 MVP 之上还叠加：AI 课堂（FIF 独立会话 + 数字码 / 扫码签到 / 作业详情）、首启欢迎页、关于页 + 调试开关、更多功能页（劳动教育 / 考试成绩 / 素质学分 / 实况通知权限引导）、首页"此刻我该做什么"叙事场景（7 类场景 + 副标题动态轮换 + 启动预加载）、跑步路线模板系统（录制 / 列表 / 详情 / 质量校验 / 模板驱动模拟）、大一大二智慧运动年级分流（俱乐部详情 / 锻炼考勤 / 课外跑步进度）、节假日离返校登记（首页卡片 + 查寝列表双 section + 独立登记表单）、Flyme / Android 16 / 普通三分支实况通知、用户自设的早自习 / 晚自习行、底栏「待办」tab（本地作业与事务清单）
+- 在 MVP 之上还叠加：AI 课堂（FIF 独立会话 + 数字码 / 扫码签到 / 作业详情）、首启欢迎页、关于页 + 调试开关、更多功能页（劳动教育 / 考试成绩 / 素质学分 / 实况通知权限引导）、首页"此刻我该做什么"叙事场景（7 类场景 + 副标题动态轮换 + 启动预加载）、跑步路线模板系统（录制 / 列表 / 详情 / 质量校验 / 模板驱动模拟）、大一大二智慧运动年级分流（俱乐部详情 / 锻炼考勤 / 课外跑步进度）、节假日离返校登记（首页卡片 + 查寝列表双 section + 独立登记表单）、Flyme / Android 16 / 普通三分支实况通知、用户自设的早自习 / 晚自习行、底栏「待办」tab（本地作业与事务清单）、查寝历史页（入口在查寝列表右上角，按月 + 状态档查服务端）
 
 `docs/` 下多份规划文档是这些阶段当时的蓝本，多数已是"完成记录"而非未来方向；接口协议文档（`docs/接口分析/`）仍是长期有效的参考与踩坑实录。
 
@@ -54,7 +54,7 @@
 | `home` | 首页容器 + 底部导航 + 场景驱动叙事（`HomeScene` / `SubtitleLibrary` / `HomeBootstrap` 预加载）；详见 [`home-overview.md`](home-overview.md) |
 | `schedule` | 周课表 + 三态周选择器（当前 / 选中 / 其他）+ 首末行动态的节次网格（含用户自设的早/晚自习行）+ 断网本地快照回退；详见 [`schedule-overview.md`](schedule-overview.md) |
 | `todo` | 待办清单：作业 / 事务条目（标题 + 可选科目 + 截止日），底栏第 3 个 tab，今天（含逾期）/ 以后 / 已完成 三段，纯本地 JSON 落盘；详见 [`todo-overview.md`](todo-overview.md) |
-| `checkin` | 查寝签到：任务列表 / 详情 / 照片上传 / 提交；列表页同时承载 fdygl 同源节假日任务入口 |
+| `checkin` | 查寝签到：任务列表 / 详情 / 照片上传 / 提交 / 按月历史；列表页同时承载 fdygl 同源节假日任务入口 |
 | `holiday` | 节假日离返校登记：任务列表状态判断 / 表单回填 / 保存提交，入口挂在首页卡片与查寝列表页；详见 [`holiday-overview.md`](holiday-overview.md) |
 | `running` | 跑步：GPS 真实模式（前台 `RunTrackingService`）+ 模拟模式（`TrajectoryGenerator`）+ **路线模板系统**（录制 / 列表 / 详情 / 质量校验 / 设置页）+ 大一大二智慧运动分流 / 俱乐部 / 锻炼考勤；详见 [`running-overview.md`](running-overview.md) |
 | `labor` | 劳动教育：工时总览 + 活动记录 + 详情（只读） |
@@ -80,7 +80,7 @@
 > - [`designsystem-overview.md`](designsystem-overview.md) — Token 两层结构 + 11 个通用组件 + Compose Dark 与资源层 forceDarkAllowed 的正交关系
 > - [`login-overview.md`](login-overview.md) — RSA 加密登录 + Token 持久化
 > - [`schedule-overview.md`](schedule-overview.md) — 周课表 + 三态周选择器 + 断网本地快照回退
-> - [`checkin-overview.md`](checkin-overview.md) — 查寝签到全流程（定位/拍照/提交）+ fdygl 同源任务列表入口
+> - [`checkin-overview.md`](checkin-overview.md) — 查寝签到全流程（定位/拍照/提交/按月历史）+ fdygl 同源任务列表入口
 > - [`holiday-overview.md`](holiday-overview.md) — 节假日离返校登记（首页卡片 + 查寝列表双 section + 独立登记表单）
 > - [`labor-overview.md`](labor-overview.md) — 工时总览 + 活动记录（只读）
 > - [`aiclass-overview.md`](aiclass-overview.md) — FIF SSO + 数字码/扫码签到
