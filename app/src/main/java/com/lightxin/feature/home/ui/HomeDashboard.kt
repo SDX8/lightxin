@@ -146,6 +146,15 @@ fun HomeDashboard(
 
             Spacer(modifier = Modifier.height(22.dp))
 
+            // 横幅不等数据：会话被顶跟课表/跑步接口谁先回来无关。
+            // 原先它塞在 isLoading 的 else 分支里，慢网下骨架屏一直挡着，等于最该说话的时候不说话。
+            if (uiState.aiClassBlocked) {
+                StaggeredCard(index = 0) {
+                    AiClassBlockedBanner(onRelogin = { showReloginDialog = true })
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
             if (uiState.isLoading) {
                 // "下一节" headline 占位
                 Box(modifier = Modifier.padding(horizontal = 24.dp)) {
@@ -183,12 +192,6 @@ fun HomeDashboard(
                     modifier = Modifier.padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    if (uiState.aiClassBlocked) {
-                        StaggeredCard(index = 1) {
-                            AiClassBlockedBanner(onRelogin = { showReloginDialog = true })
-                        }
-                    }
-
                     StaggeredCard(index = 2) {
                         TodayCourseCard(
                             courses = data.todayCourses,

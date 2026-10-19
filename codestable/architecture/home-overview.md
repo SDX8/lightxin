@@ -154,9 +154,9 @@ depends_on: [network-overview, running-overview]
 
 ### 2.7 首页会顺带做一次 AI课堂会话体检
 
-锚点：`feature/home/ui/HomeViewModel.kt:128-132` / `feature/aiclass/data/AiClassSessionGuard.kt:28-44`
+锚点：`feature/home/ui/HomeViewModel.kt:110-152` / `feature/aiclass/data/AiClassSessionGuard.kt:36-60`
 
-`HomeViewModel` 在 init 与每次 `refresh()` 时各起一条独立协程调 `aiClassSessionGuard.checkOnLaunch()`，只有返回 `Blocked` 才把 `aiClassBlocked` 置真。
+`HomeViewModel` 在 init 与每次 `refresh()` 时各起一条独立协程调 `aiClassSessionGuard.checkOnLaunch()`，但不再自己存结论 —— 它 collect `guard.blocked`，`aiClassBlocked` 只是那份 StateFlow 的镜像，于是 AI课堂页内的 SSO 失败也能立刻反映到首页横幅上。
 
 两点刻意的设计：
 

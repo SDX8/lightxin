@@ -8,7 +8,6 @@ import com.lightxin.core.auth.SessionManager
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.auth.resolveDisplayName
 import com.lightxin.core.notification.CourseNotificationScheduler
-import com.lightxin.feature.aiclass.data.AiClassSessionCheck
 import com.lightxin.feature.aiclass.data.AiClassSessionGuard
 import com.lightxin.feature.checkin.data.CheckinRepository
 import com.lightxin.feature.checkin.domain.CheckinTask
@@ -108,6 +107,12 @@ class HomeViewModel @Inject constructor(
         }
         // 自行加载 bootstrap 不覆盖的 running / labor
         viewModelScope.launch { loadExtras() }
+        // 横幅只认一个来源：guard.blocked —— 启动探测与 AI课堂页内的失败都往那里写
+        viewModelScope.launch {
+            aiClassSessionGuard.blocked.collect { blocked ->
+                _uiState.update { it.copy(aiClassBlocked = blocked) }
+            }
+        }
         // AI课堂会话体检：官方 App 登录后 FIF 服务端映射会被顶掉，本地 Cookie 却看不出来
         viewModelScope.launch { checkAiClassSession() }
         // 启动课程倒计时通知调度
@@ -137,15 +142,12 @@ class HomeViewModel @Inject constructor(
             sessionManager.logout()
             profileStore.clear()
             specialStore.clear()
-            _uiState.update { it.copy(aiClassBlocked = false) }
             onDone()
         }
     }
 
     private suspend fun checkAiClassSession() {
-        val check = aiClassSessionGuard.checkOnLaunch()
-        Log.i(HOME_LOG_TAG, "AI课堂会话体检：$check")
-        _uiState.update { it.copy(aiClassBlocked = check == AiClassSessionCheck.Blocked) }
+        Log.i(HOME_LOG_TAG, "AI课堂会话体检：${aiClassSessionGuard.checkOnLaunch()}")
     }
 
     /** 应用进入后台：记录时间戳 */

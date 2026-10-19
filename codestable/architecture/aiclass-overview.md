@@ -165,20 +165,21 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 
 ### 2.10 启动体检与首页「多端登录」横幅
 
-锚点：`feature/aiclass/data/AiClassSessionGuard.kt:14-53`、`feature/home/ui/HomeViewModel.kt:128-132`、`feature/home/ui/HomeDashboard.kt:391-426`
+锚点：`feature/aiclass/data/AiClassSessionGuard.kt:20-80`、`feature/home/ui/HomeViewModel.kt:110-152`、`feature/home/ui/HomeDashboard.kt:151-156,416-440`
 
 同一账号在官方 App 登录后，FIF 服务端的用户映射会被顶掉，表现为签到时服务端回 `FIF用户重映射失败`（该字符串来自服务端，仓库里没有）。本地之所以察觉不到：FIF token 与 `studentId` 持久化在 `fif_session` DataStore，SESSION Cookie 却只在内存，所以进程存活期间 `isSessionValid()` 恒为 true，`ensureSession()` 不会重新 SSO。
 
-`AiClassSessionGuard.checkOnLaunch()` 的处置方式是主动跑一次 `performSso()`：
+`AiClassSessionGuard.checkOnLaunch()` 无条件主动跑一次 `performSso()` —— 不再因为「本地没有 token」而跳过：被顶号时第 3 步用户映射失败，`performSso()` 根本不会把 token 落盘，所以「没有 token 就说明没用过 AI课堂」这个前提不成立，结果恰恰是最该报警的账号永远探测不到。SSO 只需要校内 accessToken，从头跑一次就能验；代价是每次冷启动多三个后台请求。
 
 | 结论 | 触发条件 | 首页行为 |
 |---|---|---|
-| `Skipped` | DataStore 里没有 FIF token（从没进过 AI课堂） | 不提示 |
 | `Healthy` | SSO 三步全通 | 不提示，且会话已顺带续上 |
 | `Blocked` | SSO 明确失败（映射取不到 `data`、拿不到 302 Location） | 琥珀横幅「账号已在其他设备登录，AI课堂签到不可用」+「重新登录」 |
 | `NetworkIssue` | `IOException` / 协程超时 / 12s 无响应 | 不提示 |
 
-调用点在 `HomeViewModel` 的 init 与 `refresh()`，各自起独立协程，不阻塞 splash 放行也不占用下拉刷新动画。横幅按钮先弹二次确认（说明会挤下线官方 App、只想看课表可以取消），确认后才走 `HomeViewModel.relogin()`：`clearFifSession()` + `sessionManager.logout()` 后跳 `Routes.LOGIN`。
+结论不再由 `HomeViewModel` 自己存一份：`AiClassSessionGuard.blocked: StateFlow<Boolean>` 是唯一来源，启动探测与 AI课堂页内那次 `performSso()` 的失败（`AiClassViewModel` 调 `record(checkOf(result))`）都往这里写，首页只 collect。否则用户在 AI课堂里撞见「FIF 用户映射失败」后回首页仍然一片祥和，要重启 App 才提示。
+
+调用点在 `HomeViewModel` 的 init 与 `refresh()`，各自起独立协程，不阻塞 splash 放行也不占用下拉刷新动画。横幅的渲染位置在骨架屏**之外**（`HomeDashboard` 里 `if (uiState.isLoading)` 之前）—— 它原先是数据卡之一，慢网下加载不完成就永远不出现，恰恰在最该说话的时候沉默。横幅按钮先弹二次确认（说明会挤下线官方 App、只想看课表可以取消），确认后才走 `HomeViewModel.relogin()`：`clearFifSession()` + `sessionManager.logout()` 后跳 `Routes.LOGIN`。
 
 `FifSessionManager.clear()` 会清 `fif_session` DataStore 与三个 fifedu 域（`sttp` / `aiitpass` / `izuoye`）的 Cookie —— 该 jar 按 host 整体覆盖，写空列表即为清空；「我的」页的退出登录也已接上同一调用。
 
@@ -213,7 +214,7 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 - **扫码用 ML Kit 而非 ZXing** —— Google 官方库，维护成本低，自带自动变焦。来源：`compound/2026-04-22-decision-ml-kit-barcode.md`。
 - **手动处理 302 跳转** —— FIF 接口返回重定向而非 JSON，App 需要手动跟随。来源：`AiClassRepository.kt:461-556`。
 - **SSO 失败后自动重试** —— `submitQrCode` 在检测到 `loginManage` 重定向时，强制刷新 SSO 后重试一次。来源：`AiClassRepository.kt:469-473`。
-- **启动体检只在 `Blocked` 时提示** —— `performSso()` 会把网络异常和超时统一包成普通 `Exception`，所以分类只能沿异常 cause 链找 `IOException` / `CancellationException`（`isProbeFailure`），绝不按 message 文本判断，否则断网会被说成「多端登录」。来源：`AiClassSessionGuard.kt:52-53`。
+- **启动体检只在 `Blocked` 时提示** —— `performSso()` 会把网络异常和超时统一包成普通 `Exception`，所以分类只能沿异常 cause 链找 `IOException` / `CancellationException`（`isProbeFailure`），绝不按 message 文本判断，否则断网会被说成「多端登录」。`NetworkIssue` 既不置位也不清除已有结论。来源：`AiClassSessionGuard.kt:55-79`。
 - **体检直接复用 `performSso()` 而不是造只读探针** —— 映射接口在没有 SESSION Cookie 时的行为不可信，单独探一下反而拿不到结论；跑完整 SSO 既能判定又能顺手续期。代价是冷启动多三个请求。
 - **CameraX + PreviewView** —— 使用 Android Jetpack CameraX 库管理相机生命周期，避免直接操作 Camera2 API。
 
@@ -223,7 +224,7 @@ UI 层限制输入长度 ≤6，签到按钮在输入达到 6 位且存在进行
 - `feature/aiclass/data/IzuoyeApi.kt` — 5 个爱作业平台接口
 - `feature/aiclass/data/IzuoyeResponse.kt` — 爱作业平台响应模型
 - `feature/aiclass/data/AiClassRepository.kt` — SSO + 课程 + 测验列表 + 作业 + 签到 + 扫码全流程
-- `feature/aiclass/data/AiClassSessionGuard.kt:14-53` — 启动会话体检与结论分类
+- `feature/aiclass/data/AiClassSessionGuard.kt:20-80` — 会话体检、`blocked` 状态源与结论分类
 - `feature/aiclass/data/AiClassResponse.kt` — 响应模型（含测验列表 + 作业列表）
 - `feature/aiclass/domain/AiClassModels.kt` — AiCourse / AiQuiz / AiSignInInfo / AiWorkingRecord
 - `feature/aiclass/domain/AiHomeworkModels.kt` — AiHomework / AiHomeworkDetail / AiStudentWork

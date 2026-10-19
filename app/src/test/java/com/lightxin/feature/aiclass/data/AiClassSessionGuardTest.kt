@@ -1,5 +1,6 @@
 package com.lightxin.feature.aiclass.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,5 +31,18 @@ class AiClassSessionGuardTest {
         assertFalse(isProbeFailure(null))
         assertFalse(isProbeFailure(Exception("FIF 用户映射失败")))
         assertFalse(isProbeFailure(Exception("FIF 单点登录失败")))
+    }
+
+    @Test
+    fun `an sso outcome maps to exactly one verdict`() {
+        assertEquals(AiClassSessionCheck.Healthy, checkOf(Result.success("token")))
+        assertEquals(
+            AiClassSessionCheck.Blocked,
+            checkOf(Result.failure<Unit>(Exception("FIF 用户映射失败"))),
+        )
+        assertEquals(
+            AiClassSessionCheck.NetworkIssue,
+            checkOf(Result.failure<Unit>(IOException("Unable to resolve host"))),
+        )
     }
 }

@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lightxin.core.network.FifSessionManager
 import com.lightxin.feature.aiclass.data.AiClassRepository
+import com.lightxin.feature.aiclass.data.AiClassSessionGuard
+import com.lightxin.feature.aiclass.data.checkOf
 import com.lightxin.feature.aiclass.domain.AiCourse
 import com.lightxin.feature.aiclass.domain.AiQuiz
 import com.lightxin.feature.aiclass.domain.AiClassQrPayload
@@ -45,6 +47,7 @@ data class AiClassUiState(
 class AiClassViewModel @Inject constructor(
     private val repository: AiClassRepository,
     private val fifSession: FifSessionManager,
+    private val sessionGuard: AiClassSessionGuard,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AiClassUiState())
@@ -63,6 +66,8 @@ class AiClassViewModel @Inject constructor(
                 _uiState.update { it.copy(isSsoInProgress = true) }
                 val ssoResult = fifSession.performSso()
                 _uiState.update { it.copy(isSsoInProgress = false) }
+                // 页内失败也要记账，否则用户得重启 App 才能在首页看到顶号横幅
+                sessionGuard.record(checkOf(ssoResult))
                 if (ssoResult.isFailure) {
                     _uiState.update {
                         it.copy(isLoading = false, error = ssoResult.exceptionOrNull()?.message)
