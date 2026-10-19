@@ -87,7 +87,7 @@ TokenManager.getUserCode() 作为 studentId
 | `app/holiday/getHolidayRegister` | GET | 查询已有登记，表单回填 | `getExistingRegister(holidayId)` |
 | `app/holiday/save` | POST | 保存/提交登记 | `saveRegistration(holidayId, form)` |
 
-所有接口成功判断统一为 `code == "0"`。锚点：`app/src/main/java/com/lightxin/feature/holiday/data/HolidayRepository.kt:180-188`。
+所有接口成功判断走 `fdyglSucceeded(code, flag)`：`code` 为 `"0"`/`"200"` **且 `flag != false`**。锚点：`app/src/main/java/com/lightxin/feature/holiday/data/HolidayRepository.kt:191-201`、`app/src/main/java/com/lightxin/core/network/FdyglProtocol.kt`。
 
 ### 2.4 登记列表：列表接口 + 并发补登记状态
 
@@ -215,7 +215,7 @@ holiday 新增一条参数化路由：
 ## 6. 已知约束 / 边界情况
 
 - **studentId 来自 `TokenManager.getUserCode()`** —— holiday 请求不单独维护学生 ID 来源。锚点：`app/src/main/java/com/lightxin/feature/holiday/data/HolidayRepository.kt:165-166`。
-- **接口成功只认 `code == "0"`** —— `flag` 字段存在但当前不作为成功判断。锚点：`app/src/main/java/com/lightxin/feature/holiday/data/HolidayRepository.kt:180-188`。
+- **`code == "0"` 不等于成功** —— 会话被顶掉时服务端返回 HTTP 200 + `{"code":"0","flag":false,"msg":"非法访问"}`，只看 `code` 会把失效会话当成「没有数据」。现在 `flag == false` 一律判失败，并把「非法访问」翻译成「校园服务会话已失效（在其它设备登录会互相顶号），请重新登录后再试」。锚点：`app/src/main/java/com/lightxin/core/network/FdyglProtocol.kt`。
 - **首页只展示第一个未登记 holiday** —— `getFirstUnregistered()` 取第一页第一个 `!isRegistered` 项。锚点：`app/src/main/java/com/lightxin/feature/holiday/data/HolidayRepository.kt:159-163`。
 - **holiday 列表不做滚动分页** —— 虽然 Repository 接收 page 参数，但当前首页与查寝列表只取 page 1；该边界来自验收。锚点：`codestable/features/2026-04-28-holiday-leave-register/holiday-leave-register-acceptance.md:52-56`。
 - **审批流程和附件字段保留但不实现 UI** —— DTO 保留字段，表单页不渲染审批/附件。锚点：`app/src/main/java/com/lightxin/feature/holiday/data/HolidayResponse.kt:20-37,54-68` / `codestable/features/2026-04-28-holiday-leave-register/holiday-leave-register-acceptance.md:56-58`。

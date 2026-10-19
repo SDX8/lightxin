@@ -2,6 +2,8 @@ package com.lightxin.feature.holiday.data
 
 import com.lightxin.core.auth.TokenManager
 import com.lightxin.core.network.CheckinRetrofit
+import com.lightxin.core.network.fdyglFailureMessage
+import com.lightxin.core.network.fdyglSucceeded
 import com.lightxin.feature.holiday.domain.HolidayFormData
 import com.lightxin.feature.holiday.domain.HolidayTask
 import com.lightxin.feature.holiday.domain.StrokeOption
@@ -34,7 +36,7 @@ class HolidayRepository @Inject constructor(
             )
             val response = api.getRegistrationPage(body)
             if (!response.isSuccess()) {
-                return Result.failure(Exception(response.msg ?: "获取节假日列表失败"))
+                return Result.failure(Exception(fdyglFailureMessage(response.msg, "获取节假日列表失败")))
             }
             val rows = response.rows.orEmpty()
             // 列表接口不返回个人登记状态，对每个 holiday 并发查 getHolidayRegister 补齐
@@ -67,7 +69,7 @@ class HolidayRepository @Inject constructor(
         return try {
             val response = api.getHolidaySetById(holidayId)
             if (!response.isSuccess()) {
-                return Result.failure(Exception(response.msg ?: "获取节假日详情失败"))
+                return Result.failure(Exception(fdyglFailureMessage(response.msg, "获取节假日详情失败")))
             }
             val data = response.data
                 ?: return Result.failure(Exception("获取节假日详情失败"))
@@ -85,7 +87,7 @@ class HolidayRepository @Inject constructor(
             val body = mapOf("dictType" to "app_stroke_type")
             val response = api.listDict(body)
             if (!response.isSuccess()) {
-                return Result.failure(Exception(response.msg ?: "获取字典失败"))
+                return Result.failure(Exception(fdyglFailureMessage(response.msg, "获取字典失败")))
             }
             val items = response.data.orEmpty()
             Result.success(
@@ -107,7 +109,7 @@ class HolidayRepository @Inject constructor(
         return try {
             val response = api.getHolidayRegister(holidayId, getStudentId())
             if (!response.isSuccess()) {
-                return Result.failure(Exception(response.msg ?: "获取已有登记失败"))
+                return Result.failure(Exception(fdyglFailureMessage(response.msg, "获取已有登记失败")))
             }
             val data = response.data
             if (data == null) {
@@ -158,7 +160,7 @@ class HolidayRepository @Inject constructor(
             if (response.isSuccess()) {
                 Result.success(Unit)
             } else {
-                Result.failure(Exception(response.msg ?: "提交登记失败"))
+                Result.failure(Exception(fdyglFailureMessage(response.msg, "提交登记失败")))
             }
         } catch (e: CancellationException) {
             throw e
@@ -188,15 +190,15 @@ class HolidayRepository @Inject constructor(
         }
     }
 
-    private fun RegistrationPageResponse.isSuccess(): Boolean = code == "0"
+    private fun RegistrationPageResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
 
-    private fun HolidayDetailResponse.isSuccess(): Boolean = code == "0"
+    private fun HolidayDetailResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
 
-    private fun DictResponse.isSuccess(): Boolean = code == "0"
+    private fun DictResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
 
-    private fun HolidayRegisterResponse.isSuccess(): Boolean = code == "0"
+    private fun HolidayRegisterResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
 
-    private fun SaveResponse.isSuccess(): Boolean = code == "0"
+    private fun SaveResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
 
     private fun HolidayRow.toDomain(isRegistered: Boolean): HolidayTask = HolidayTask(
         holidayId = id.orEmpty(),

@@ -1,6 +1,8 @@
 package com.lightxin.feature.checkin.data
 
 import com.lightxin.core.network.CheckinRetrofit
+import com.lightxin.core.network.fdyglFailureMessage
+import com.lightxin.core.network.fdyglSucceeded
 import com.lightxin.feature.checkin.domain.CheckinTask
 import com.lightxin.feature.checkin.domain.TaskDetail
 import dagger.Module
@@ -34,7 +36,7 @@ class CheckinRepository @Inject constructor(
             )
             val response = api.pageStudentSignIn(body)
             if (!response.isSuccess()) {
-                return Result.failure(Exception(response.msg ?: "获取签到任务失败"))
+                return Result.failure(Exception(fdyglFailureMessage(response.msg, "获取签到任务失败")))
             }
             val list = response.rows ?: response.data?.list.orEmpty()
 
@@ -62,7 +64,7 @@ class CheckinRepository @Inject constructor(
             val body = mapOf("dateId" to dateId)
             val response = api.getTaskInfoByDateId(body)
             if (!response.isSuccess()) {
-                return Result.failure(Exception(response.msg ?: "获取任务详情失败"))
+                return Result.failure(Exception(fdyglFailureMessage(response.msg, "获取任务详情失败")))
             }
             val data = response.data
                 ?: return Result.failure(Exception("获取任务详情失败"))
@@ -106,8 +108,8 @@ class CheckinRepository @Inject constructor(
             val response = fileApi.uploadFile(part)
 
             val url = response.data.extractUploadUrl()
-            if (url.isNullOrBlank()) {
-                Result.failure(Exception(response.msg ?: "照片上传失败"))
+            if (url.isNullOrBlank() || !fdyglSucceeded(response.code, response.flag)) {
+                Result.failure(Exception(fdyglFailureMessage(response.msg, "照片上传失败")))
             } else {
                 Result.success(url)
             }
@@ -134,10 +136,10 @@ class CheckinRepository @Inject constructor(
                 "outSigninDesc" to "",
             )
             val response = api.signIn(body)
-            if (response.code == "200" || response.code == "0") {
+            if (response.isSuccess()) {
                 Result.success(Unit)
             } else {
-                Result.failure(Exception(response.msg ?: "签到失败"))
+                Result.failure(Exception(fdyglFailureMessage(response.msg, "签到失败")))
             }
         } catch (e: CancellationException) {
             throw e
@@ -158,9 +160,11 @@ class CheckinRepository @Inject constructor(
         }
     }
 
-    private fun SignInPageResponse.isSuccess(): Boolean = code == "0" || code == "200"
+    private fun SignInPageResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
 
-    private fun TaskInfoResponse.isSuccess(): Boolean = code == "0" || code == "200"
+    private fun TaskInfoResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
+
+    private fun SignInSubmitResponse.isSuccess(): Boolean = fdyglSucceeded(code, flag)
 
     private fun JsonElement?.extractUploadUrl(): String? {
         val element = this ?: return null

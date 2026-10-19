@@ -15,7 +15,8 @@ depends_on: [network-overview]
 
 - **taskDateId** — 签到任务的唯一标识，从列表接口多个可能字段中提取（`taskDateId` / `id` / `userTaskId` / `taskId`），是后续详情和提交的核心参数
 - **WGS-84 → BD-09** — 原生定位得到 WGS-84 坐标，经 `CoordinateConverter.wgs84ToBd09()` 转为 BD-09 后上传；服务端期望 BD-09 格式
-- **多 header 鉴权** — 查寝接口（`fdygl.aiit.edu.cn`）的 `AuthInterceptor` 需同时携带 `accessToken / access_token / userCode / xh / userType / X-Requested-With / Origin / Referer`，否则返回 `-100 非法访问`
+- **多 header 鉴权** — 查寝接口（`fdygl.aiit.edu.cn`）的 `AuthInterceptor` 需同时携带 `accessToken / access_token / userCode / xh / userType / X-Requested-With / Origin / Referer`，缺任一个就被判非法访问。实测（2026-10-19）：拒绝是以 **HTTP 200** 返回的 `{"code":"0","flag":false,"msg":"非法访问"}`，既不是 HTTP 错误码也不是 `-100`
+- **成败看 `flag` 不看 `code`** — 统一走 `core/network/FdyglProtocol.kt` 的 `fdyglSucceeded(code, flag)`；只看 `code == "0"` 会把顶号/失效会话显示成「暂无签到与节假日任务」
 - **照片上传** — 使用独立 `FileUploadApi`（Multipart），上传结果的数据结构不确定（可能是字符串或 JSON 对象），`extractUploadUrl()` 做启发式提取
 
 ## 1. 定位与受众

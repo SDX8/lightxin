@@ -10,7 +10,9 @@ tags: [checkin, auth, header, fdygl]
 
 ## 背景
 
-查寝接口（`fdygl.aiit.edu.cn`）的鉴权方式和校内主站不同，不是单一 Bearer token。服务端要求同时携带多个身份参数，缺任何一个都会返回 `-100 非法访问`。
+查寝接口（`fdygl.aiit.edu.cn`）的鉴权方式和校内主站不同，不是单一 Bearer token。服务端要求同时携带多个身份参数，缺任何一个都会被判非法访问。
+
+> 2026-10-19 实测更正：拒绝是以 **HTTP 200** 返回的 `{"code":"0","flag":false,"msg":"非法访问"}` —— 既不是 `-100`，`code` 也仍是看似成功的 `"0"`。所以判定必须看 `flag`（`core/network/FdyglProtocol.kt`），否则会把它当成「没有任务」。
 
 ## 决定
 
