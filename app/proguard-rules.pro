@@ -10,6 +10,14 @@
 -keep class com.lightxin.**.data.** { *; }
 -keep class com.lightxin.**.domain.** { *; }
 
+# Gson 的匿名 TypeToken 子类：R8 会把它的泛型签名优化掉，运行时 getGenericSuperclass()
+# 拿不到类型参数就抛 IllegalStateException("TypeToken must be created with a type argument")。
+# 这类崩溃只在 release 出现，且死在类的 <clinit> 上，看起来就是"点图标秒闪退"。
+# allowobfuscation/allowshrinking 让它参与混淆但保住签名，不会因为整棵树被 keep 而变大。
+-keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
+-keep,allowobfuscation,allowshrinking class * extends com.google.gson.reflect.TypeToken
+-keepattributes Signature, InnerClasses, EnclosingMethod
+
 # OkHttp
 -dontwarn okhttp3.**
 -dontwarn okio.**

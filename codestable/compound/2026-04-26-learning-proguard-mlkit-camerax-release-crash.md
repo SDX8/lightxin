@@ -44,3 +44,4 @@ tags: [proguard, r8, camerax, mlkit, barcode, release]
 
 - 开启 `isMinifyEnabled` 的 commit 应该**单独做**，不要和功能改动混在一起
 - 每次加新的 SDK 依赖时（特别是含 ContentProvider 或有内部 DI 的库），顺手检查 proguard 规则是否覆盖
+- **同一个坑 2026-10-20 又复发一次**，这次是 Gson 匿名 `TypeToken` 的泛型签名被 R8 剥掉，release 点图标秒闪退：见 [`2026-10-20-learning-r8-gson-typetoken-release-crash`](2026-10-20-learning-r8-gson-typetoken-release-crash.md)。两条合并成的教训是——release 包必须装机冷启动验证一次，debug 全绿不代表 release 能开
