@@ -148,9 +148,13 @@ fun HomeDashboard(
 
             // 横幅不等数据：会话被顶跟课表/跑步接口谁先回来无关。
             // 原先它塞在 isLoading 的 else 分支里，慢网下骨架屏一直挡着，等于最该说话的时候不说话。
+            // 外层这圈 20dp 不能省：卡片列自带水平内缩，提到外面后不补就会变成通栏色带，
+            // 10dp 圆角也被屏幕边切掉，跟下面的卡完全不对齐。
             if (uiState.aiClassBlocked) {
-                StaggeredCard(index = 0) {
-                    AiClassBlockedBanner(onRelogin = { showReloginDialog = true })
+                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    StaggeredCard(index = 0) {
+                        AiClassBlockedBanner(onRelogin = { showReloginDialog = true })
+                    }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
             }
